@@ -1,18 +1,8 @@
-from _collections_abc import dict_items
-from typing import TypeVar, Any
-from functools import wraps, reduce
-from sortedcontainers import SortedDict, SortedItemsView  # type: ignore
+from _collections_abc import dict_items, dict_keys, dict_values
+from sortedcontainers import SortedDict, SortedItemsView
+from .functions import commutative
 
-SMALL_SPACE = "\u2009"
-MULTIPLY_SIGN = "\u22C5"
-
-T = TypeVar("T")
-U = TypeVar("U")
-
-def product(iterable, initial=1):
-    return reduce(lambda x, y: x * y, iterable, initial)
-
-class DefaultSortedDict(SortedDict[T, U]):
+class DefaultSortedDict[T, U](SortedDict[T, U]):
     def __init__(self, default_factory=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.default_factory = default_factory
@@ -21,32 +11,8 @@ class DefaultSortedDict(SortedDict[T, U]):
         self[key] = value = self.default_factory() if self.default_factory is not None else None
         return value
 
-def commutative(cls):
-    # 오버로딩된 이항 연산자들을 정의
-    binary_operators = [
-        '__add__', '__sub__', '__mul__', '__matmul__', '__truediv__', '__floordiv__',
-        '__mod__', '__divmod__', '__pow__', '__lshift__', '__rshift__', '__and__',
-        '__xor__', '__or__'
-    ]
-
-    # 각 연산자에 대해 역-연산자 설정
-    for op in binary_operators:
-        reverse_op = '__r' + op[2:]  # '__add__' -> '__radd__' 변환
-        if hasattr(cls, op):
-            original_method = getattr(cls, op)
-
-            @wraps(original_method)
-            def method(self, other):
-                return original_method(other, self)
-
-            setattr(cls, reverse_op, method)
-
-    return cls
-
-K = TypeVar("K")
-
 @commutative
-class ArithmeticDict(DefaultSortedDict[K, int | float]):
+class ArithmeticDict[K](DefaultSortedDict[K, int | float]):
     def __init__(self, *args, **kwargs):
         super().__init__(int, *args, **kwargs)
 
@@ -107,22 +73,34 @@ class ArithmeticDict(DefaultSortedDict[K, int | float]):
     def __ceil__(self) -> 'ArithmeticDict[K]':
         return ArithmeticDict({k: self[k] // 1 + 1 for k in self.keys()})
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
+        if memodict is None:
+            memodict = {}
+
         return ArithmeticDict(self)
 
     def items(self) -> 'dict_items[K, int | float]':
         return super().items()
 
-class Multitone(type):
-    _instances: dict[tuple, 'Multitone'] = {}
+    def keys(self) -> 'dict_keys[K]':
+        return super().keys()
 
-    def __call__(cls, *args, **kwargs):
-        kwargs_key = tuple(sorted(kwargs.items()))
-        key = (cls, *args, kwargs_key)
+    def values(self) -> 'dict_values[int | float]':
+        return super().values()
 
-        if key not in cls._instances:
-            cls._instances[key] = super().__call__(*args, **kwargs)
-        return cls._instances[key]
+# class Multitone(type):
+#     _instances: dict[tuple, 'Multitone'] = {}
+#
+#     def __call__(cls, *args, **kwargs):
+#         key = (cls, kwargs.get('tone', None))
+#
+#         if key not in cls._instances:
+#             cls._instances[key] = super().__call__(*args, **kwargs)
+#
+#         return cls._instances[key]
 
-def pretty(n: int | float, precision: int = 2) -> str:
-    return f"{n:.0f}" if float(n).is_integer() else f"{n:.{precision}f}"
+# class A[**T]:
+#     def __init__(self):
+#         self.data = T.
+
+__all__ = ['DefaultSortedDict', 'ArithmeticDict']

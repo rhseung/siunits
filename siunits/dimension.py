@@ -1,4 +1,4 @@
-from siunits.utils import commutative, ArithmeticDict, pretty, SMALL_SPACE, MULTIPLY_SIGN  # type: ignore
+from siunits.utils import commutative, ArithmeticDict, pretty, SMALL_SPACE, MULTIPLY_SIGN, MULTIPLY_SIGN_LATEX
 from attrs import define, asdict
 
 @commutative
@@ -77,7 +77,10 @@ class Dimension:
         else:
             formula = '1'
 
-        return f"Dimension[{formula}]"
+        return formula
+
+    def __repr__(self) -> str:
+        return f"<Dimension [{self}]>"
 
     def _repr_latex_(self) -> str:
         symbols = {
@@ -105,15 +108,12 @@ class Dimension:
                 else:
                     back.append(f"{symbols[k]}^{pretty(-v)}")
 
-        MULTIPLY_SIGN_ = r' \cdot '
-        SMALL_SPACE_ = r' \, '
-
         if front and back:
-            formula = f'\\dfrac{{{MULTIPLY_SIGN_.join(front)}}}{{{MULTIPLY_SIGN_.join(back)}}}'
+            formula = f'\\dfrac{{{MULTIPLY_SIGN_LATEX.join(front)}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
         elif front:
-            formula = f'{MULTIPLY_SIGN_.join(front)}'
+            formula = f'{MULTIPLY_SIGN_LATEX.join(front)}'
         elif back:
-            formula = f'\\dfrac{{1}}{{{MULTIPLY_SIGN_.join(back)}}}'
+            formula = f'\\dfrac{{1}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
         else:
             formula = '1'
 

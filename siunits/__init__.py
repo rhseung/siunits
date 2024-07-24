@@ -1,4 +1,5 @@
-from siunits.unit import SI, ComplexUnit, Unit
+from siunits.unit import FixedUnit, Unit
+from siunits.predefined import *
 
 __package_name__ = 'siunits'
 __version__ = '0.1'
