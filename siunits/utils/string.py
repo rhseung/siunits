@@ -34,8 +34,8 @@ superscripts = {
 }
 
 # @dispatch(int, int)
-def pretty(n: int | float, precision: int = 2) -> str:
-    return f"{n:.0f}" if float(n).is_integer() else f"{n:.{precision}f}"
+def pretty(n: int | float) -> str:
+    return f"{n:.0f}" if float(n).is_integer() else f"{n}"
 
 # @dispatch(str, (int, float), (int, float))
 # def pretty(s: str, sub: int | float = None, sup: int | float = None) -> str:

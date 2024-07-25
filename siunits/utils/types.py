@@ -1,5 +1,5 @@
 from _collections_abc import dict_items, dict_keys, dict_values
-from sortedcontainers import SortedDict, SortedItemsView
+from sortedcontainers import SortedDict, SortedItemsView, SortedKeysView, SortedValuesView
 from .functions import commutative
 
 class DefaultSortedDict[T, U](SortedDict[T, U]):
@@ -82,10 +82,10 @@ class ArithmeticDict[K](DefaultSortedDict[K, int | float]):
     def items(self) -> 'dict_items[K, int | float]':
         return super().items()
 
-    def keys(self) -> 'dict_keys[K]':
+    def keys(self) -> 'dict_keys[K, int | float]':
         return super().keys()
 
-    def values(self) -> 'dict_values[int | float]':
+    def values(self) -> 'dict_values[K, int | float]':
         return super().values()
 
 # class Multitone(type):

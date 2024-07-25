@@ -35,6 +35,10 @@ class UnitBase:
         return _pow(self, exponent)
 
     @abstractmethod
+    def __deepcopy__(self, memo=None):
+        pass
+
+    @abstractmethod
     def __str__(self) -> str:
         pass
 
@@ -45,6 +49,22 @@ class UnitBase:
     @abstractmethod
     def expand(self):
         pass
+
+    @abstractmethod
+    def si(self):
+        pass
+
+    def to(self, other: 'UnitBase') -> 'UnitBase':
+        # TODO: Implement conversion
+        if self.dimension != other.dimension:
+            raise DimensionMismatchError(self.dimension, other.dimension, "Cannot convert units with different dimensions")
+
+        # atm**2.to(atm*Pa) -> 101325 atm*Pa
+        # multiplier도 고려해야함
+
+        ret = deepcopy(other**1)
+        ret.multiplier = self.si().multiplier / other.si().multiplier
+        return ret
 
 # %% Unit
 class Unit(UnitBase):
@@ -59,15 +79,16 @@ class Unit(UnitBase):
 
         return cls._instances[key]
 
-    def __init__(self, symbol: str, dimension: Dimension, offset: int | float = 0, multiplier: int | float = 1):
+    def __init__(self, symbol: str, dimension: Dimension, offset: int | float = 0, multiplier: int | float = 1, *, latex_symbol: str | None = None):
         super().__init__(dimension, offset, multiplier)
         self.symbol = symbol
+        self.latex_symbol = symbol if latex_symbol is None else latex_symbol
 
     def __str__(self) -> str:
         return self.symbol
 
     def _repr_latex_(self) -> str:
-        return f'$\\mathrm {{{self.symbol}}}$'
+        return f'$\\mathrm {{{self.latex_symbol}}}$'
 
     def __repr__(self) -> str:
         ret = f"<Unit[{self.dimension}] '{self.symbol}'"
@@ -111,7 +132,15 @@ class Unit(UnitBase):
         else:
             return found
 
+    def __deepcopy__(self, memo=None):
+        if memo is None:
+            memo = {}
+        return Unit(self.symbol, self.dimension, self.offset, self.multiplier, latex_symbol=self.latex_symbol)
+
     def expand(self):
+        return self
+    
+    def si(self):
         return self
 
 # %% ComplexUnit
@@ -124,15 +153,21 @@ class ComplexUnit(UnitBase):
         # set properties
         dimension = sum((unit.dimension * exponent for unit, exponent in records.items()), start=Dimension())
         offset = offset  # TODO: Implement offset automatically
-        multiplier = multiplier
+        multiplier = multiplier * product((unit.multiplier ** exponent for unit, exponent in records.items()))
         depth = max((unit.depth for unit in records.keys()), default=0) + 1
 
         # call super constructor
         super().__init__(dimension, offset, multiplier, depth)
 
+        # set records
+        _records: dict[Unit, int | float] = {}
+        for unit, exponent in records.items():
+            if exponent != 0:
+                _records[unit] = exponent
+                unit.multiplier = 1
+
         # optimize records
-        self.records: ArithmeticDict[Unit] = ArithmeticDict(
-            {unit: exponent for unit, exponent in records.items() if exponent != 0})
+        self.records: ArithmeticDict[Unit] = ArithmeticDict[Unit](_records)
 
     def __str__(self) -> str:
         front = []
@@ -152,17 +187,18 @@ class ComplexUnit(UnitBase):
 
         if front and back:
             formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
+            if self.multiplier != 1:
+                formula = f"{pretty(self.multiplier)}{SMALL_SPACE}{formula}"
         elif front:
             formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}'
+            if self.multiplier != 1:
+                formula = f"{pretty(self.multiplier)}{SMALL_SPACE}{formula}"
         elif back:
-            formula = f'1{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
+            formula = f'{pretty(self.multiplier)}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
         else:
-            formula = '1'
+            formula = f'{pretty(self.multiplier)}'
 
-        if self.multiplier == 1:
-            return formula
-        else:
-            return f"{pretty(self.multiplier)}{SMALL_SPACE}{formula}"
+        return formula
 
     def _repr_latex_(self) -> str:
         front = []
@@ -182,17 +218,18 @@ class ComplexUnit(UnitBase):
 
         if front and back:
             formula = f'\\dfrac{{{MULTIPLY_SIGN_LATEX.join(front)}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
+            if self.multiplier != 1:
+                formula = f'{pretty(self.multiplier)}{SMALL_SPACE_LATEX}{formula}'
         elif front:
             formula = f'{MULTIPLY_SIGN_LATEX.join(front)}'
+            if self.multiplier != 1:
+                formula = f'{pretty(self.multiplier)}{SMALL_SPACE_LATEX}{formula}'
         elif back:
-            formula = f'\\dfrac{{1}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
+            formula = f'\\dfrac{{{pretty(self.multiplier)}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
         else:
-            formula = '1'
+            formula = f'{pretty(self.multiplier)}'
 
-        if self.multiplier == 1:
-            return f'$\\mathrm {{{formula}}}$'
-        else:
-            return f'$\\mathrm {{{pretty(self.multiplier)}{SMALL_SPACE_LATEX}{formula}}}$'
+        return f'$\\mathrm {{{formula}}}$'
 
     def __repr__(self):
         ret = f"<ComplexUnit[{self.dimension}] '{self}'"
@@ -201,6 +238,11 @@ class ComplexUnit(UnitBase):
         if self.multiplier != 1:
             ret += f" multiplier={self.multiplier}"
         return ret + ">"
+
+    def __deepcopy__(self, memo=None):
+        if memo is None:
+            memo = {}
+        return ComplexUnit(deepcopy(self.records, memo), self.offset, self.multiplier)
 
     def expand(self):
         """
@@ -223,13 +265,23 @@ class ComplexUnit(UnitBase):
 
                 if isinstance(most_key_expanded, ComplexUnit):
                     for key, value in most_key_expanded.records.items():
-                        expanded[key] = value * most_value
+                        expanded[key] += value * most_value
                 else:
-                    expanded[most_key_expanded] = most_value
+                    expanded[most_key_expanded] += most_value
 
                 del expanded[most_key]
 
+                return ComplexUnit(expanded, self.offset, self.multiplier * most_key_expanded.multiplier ** most_value)
+
         return ComplexUnit(expanded, self.offset, self.multiplier)
+
+    def si(self):        
+        _dict = ComplexUnit(ArithmeticDict())
+        for unit, exponent in self.records.items():
+            _dict *= unit.si() ** exponent
+        
+        _dict.multiplier *= self.multiplier
+        return _dict
 
 # %% FixedUnit
 class FixedUnit(Unit):
@@ -242,8 +294,8 @@ class FixedUnit(Unit):
 
         return cls._instances[key]
 
-    def __init__(self, symbol: str, base: ComplexUnit, offset: int | float = 0, multiplier: int | float = 1):
-        super().__init__(symbol, base.dimension, offset, 1)
+    def __init__(self, symbol: str, base: ComplexUnit, offset: int | float = 0, multiplier: int | float = 1, *, latex_symbol: str | None = None):
+        super().__init__(symbol, base.dimension, offset, 1, latex_symbol=latex_symbol)
 
         base.multiplier *= multiplier
         self.base = base
@@ -257,10 +309,18 @@ class FixedUnit(Unit):
             ret += f" multiplier={self.multiplier}"
         return ret + ">"
 
+    def __deepcopy__(self, memo=None):
+        if memo is None:
+            memo = {}
+        return FixedUnit(self.symbol, deepcopy(self.base, memo), self.offset, self.multiplier, latex_symbol=self.latex_symbol)
+
     def expand(self):
         ret = self.base
         ret.multiplier *= self.multiplier
         return ret
+
+    def si(self):
+        return self.base.si()
 
 # %% _eq
 @dispatch(ComplexUnit, ComplexUnit)
@@ -398,6 +458,7 @@ def _mul(a, b):
         merged_records[key] += value
 
     ret = ComplexUnit(ArithmeticDict(merged_records))
+    ret.multiplier = a.multiplier * b.multiplier
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -408,6 +469,7 @@ def _mul(a, b):
     merged_records[b] += 1
 
     ret = ComplexUnit(ArithmeticDict(merged_records))
+    ret.multiplier = a.multiplier * b.multiplier
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -417,6 +479,7 @@ def _mul(a, b):
     merged_records[a] += 1
 
     ret = ComplexUnit(ArithmeticDict(merged_records))
+    ret.multiplier = a.multiplier * b.multiplier
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -445,6 +508,7 @@ def _div(a, b):
         merged_records[key] -= value
 
     ret = ComplexUnit(ArithmeticDict(merged_records))
+    ret.multiplier = a.multiplier / b.multiplier
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -454,6 +518,7 @@ def _div(a, b):
     merged_records[b] -= 1
 
     ret = ComplexUnit(ArithmeticDict(merged_records))
+    ret.multiplier = a.multiplier / b.multiplier
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -463,6 +528,7 @@ def _div(a, b):
     merged_records[a] += 1
 
     ret = ComplexUnit(ArithmeticDict(merged_records))
+    ret.multiplier = a.multiplier / b.multiplier
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -487,12 +553,14 @@ def _div(a, b):
 @dispatch(ComplexUnit, (int, float))
 def _pow(a, exponent):
     ret = ComplexUnit(ArithmeticDict({unit: exp * exponent for unit, exp in a.records.items()}))
+    ret.multiplier = a.multiplier ** exponent
     ret.depth = a.depth + 1
     return ret
 
 @dispatch(Unit, (int, float))
 def _pow(a, exponent):
     ret = ComplexUnit(ArithmeticDict({a: exponent}))
+    ret.multiplier = a.multiplier ** exponent
     ret.depth = a.depth + 1
     return ret
 
