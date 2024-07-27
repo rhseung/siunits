@@ -1,5 +1,4 @@
 import re
-from multipledispatch import dispatch
 from fractions import Fraction
 
 SMALL_SPACE = "\u2009"

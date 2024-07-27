@@ -1,5 +1,5 @@
 import pytest
-from siunits.unit import Unit, ComplexUnit, Dimension, DimensionMismatchError, ArithmeticDict
+from siunits.types import Unit, ComplexUnit, Dimension, DimensionMismatchError, ArithmeticDict
 
 @pytest.fixture
 def A():

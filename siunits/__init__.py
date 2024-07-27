@@ -1,4 +1,4 @@
-from siunits.unit import FixedUnit, Unit
+from siunits.types import FixedUnit, Unit
 from siunits.predefined import *
 
 __package_name__ = 'siunits'

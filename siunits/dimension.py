@@ -1,7 +1,7 @@
-from siunits.utils import commutative, ArithmeticDict, pretty, SMALL_SPACE, MULTIPLY_SIGN, MULTIPLY_SIGN_LATEX
+from siunits.utils import ArithmeticDict, pretty, SMALL_SPACE, MULTIPLY_SIGN, MULTIPLY_SIGN_LATEX
 from attrs import define, asdict
 
-@commutative
+# @commutative
 @define(frozen=True, hash=True)
 class Dimension:
     length: int | float = 0
@@ -31,6 +31,9 @@ class Dimension:
             return Dimension(length=self.length * other.length, mass=self.mass * other.mass, time=self.time * other.time,
                              current=self.current * other.current, temperature=self.temperature * other.temperature,
                              amount=self.amount * other.amount, intensity=self.intensity * other.intensity)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
 
     def __truediv__(self, other: 'Dimension | int | float') -> 'Dimension':
         if isinstance(other, int | float):

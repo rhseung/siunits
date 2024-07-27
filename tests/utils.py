@@ -1,6 +1,6 @@
 import pytest
 from copy import deepcopy
-from siunits.utils import ArithmeticDict, Multitone
+from siunits.utils import ArithmeticDict
 
 def test_arithmetic_dict_initialization():
     ad = ArithmeticDict()
@@ -108,45 +108,45 @@ def test_arithmetic_dict_deepcopy():
     assert ad is not ad_copy
     assert ad == ad_copy
 
-class TestClassA(metaclass=Multitone):
-    def __init__(self, arg1, arg2=None):
-        self.arg1 = arg1
-        self.arg2 = arg2
-
-class TestClassASub(TestClassA):
-    pass
-
-class TestClassB(metaclass=Multitone):
-    def __init__(self, arg1, arg2=None):
-        self.arg1 = arg1
-        self.arg2 = arg2
-
-def test_multitone_unique_instances_for_different_arguments():
-    instance_a1 = TestClassA(1, 2)
-    instance_a2 = TestClassA(1, 3)
-    assert instance_a1 is not instance_a2
-
-def test_multitone_same_instance_for_same_arguments():
-    instance_a1 = TestClassA(1, 2)
-    instance_a2 = TestClassA(1, 2)
-    assert instance_a1 is instance_a2
-
-def test_multitone_distinct_instances_across_classes():
-    instance_a = TestClassA(1, 2)
-    instance_b = TestClassB(1, 2)
-    assert instance_a is not instance_b
-
-# note: 같은 인자를 가져도 다른 클래스면 다른 인스턴스로 구분하게 해놨는데 이게 나중에 단위 구현 시 Unit, ComplexUnit 등의 관계에서 어떻게 될지는 봐야 알 듯.
-def test_multitone_inheritance_distinct_instances():
-    instance_a = TestClassA(1, 2)
-    instance_a_sub = TestClassASub(1, 2)
-    assert instance_a is not instance_a_sub
-    assert isinstance(instance_a, TestClassA)
-    assert isinstance(instance_a_sub, TestClassASub)
-
-def test_multitone_argument_mutation():
-    args = [1, 2]
-    instance_a1 = TestClassA(*args)
-    args[1] = 3  # Mutate the argument list
-    instance_a2 = TestClassA(1, 2)  # Use original arguments
-    assert instance_a1 is instance_a2
+# class TestClassA(metaclass=Multitone):
+#     def __init__(self, arg1, arg2=None):
+#         self.arg1 = arg1
+#         self.arg2 = arg2
+#
+# class TestClassASub(TestClassA):
+#     pass
+#
+# class TestClassB(metaclass=Multitone):
+#     def __init__(self, arg1, arg2=None):
+#         self.arg1 = arg1
+#         self.arg2 = arg2
+#
+# def test_multitone_unique_instances_for_different_arguments():
+#     instance_a1 = TestClassA(1, 2)
+#     instance_a2 = TestClassA(1, 3)
+#     assert instance_a1 is not instance_a2
+#
+# def test_multitone_same_instance_for_same_arguments():
+#     instance_a1 = TestClassA(1, 2)
+#     instance_a2 = TestClassA(1, 2)
+#     assert instance_a1 is instance_a2
+#
+# def test_multitone_distinct_instances_across_classes():
+#     instance_a = TestClassA(1, 2)
+#     instance_b = TestClassB(1, 2)
+#     assert instance_a is not instance_b
+#
+# # note: 같은 인자를 가져도 다른 클래스면 다른 인스턴스로 구분하게 해놨는데 이게 나중에 단위 구현 시 Unit, ComplexUnit 등의 관계에서 어떻게 될지는 봐야 알 듯.
+# def test_multitone_inheritance_distinct_instances():
+#     instance_a = TestClassA(1, 2)
+#     instance_a_sub = TestClassASub(1, 2)
+#     assert instance_a is not instance_a_sub
+#     assert isinstance(instance_a, TestClassA)
+#     assert isinstance(instance_a_sub, TestClassASub)
+#
+# def test_multitone_argument_mutation():
+#     args = [1, 2]
+#     instance_a1 = TestClassA(*args)
+#     args[1] = 3  # Mutate the argument list
+#     instance_a2 = TestClassA(1, 2)  # Use original arguments
+#     assert instance_a1 is instance_a2

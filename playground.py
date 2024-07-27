@@ -1,7 +1,6 @@
 import siunits as u
-from siunits.utils.types import ArithmeticDict
-from sortedcontainers import SortedDict
+from siunits.predefined import *
 
-u1 = u.cm.to(u.m)
-print(u1.multiplier)
-print(str(u1))
+unit = [1, 2, 3]*m
+print(unit**0.3 + 2*unit**0.5)
+

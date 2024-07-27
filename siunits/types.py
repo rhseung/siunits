@@ -1,14 +1,18 @@
 from abc import abstractmethod
 from copy import deepcopy
+from typing import TypeVar, overload
+from functools import total_ordering
 
-from multipledispatch import dispatch
+from plum import dispatch
 from attrs import define
-from siunits.utils import commutative, ArithmeticDict, product, pretty, SMALL_SPACE, MULTIPLY_SIGN, SMALL_SPACE_LATEX, \
+from numpy import ndarray, array
+
+from siunits.utils import ArithmeticDict, product, pretty, SMALL_SPACE, MULTIPLY_SIGN, SMALL_SPACE_LATEX, \
     MULTIPLY_SIGN_LATEX
 from siunits.dimension import Dimension, DimensionMismatchError
 
 # %% UnitBase
-@commutative
+
 @define(hash=False, eq=False)
 class UnitBase:
     dimension: Dimension
@@ -19,19 +23,31 @@ class UnitBase:
     def __eq__(self, other):
         return _eq(self, other)
 
-    def __add__(self, other):
+    def __add__(self, other: 'UnitBase | Quantity'):
         return _add(self, other)
 
-    def __sub__(self, other):
+    def __radd__(self, other: 'UnitBase | Quantity'):
+        return _add(self, other)
+
+    def __sub__(self, other: 'UnitBase | Quantity'):
         return _sub(self, other)
 
-    def __mul__(self, other):
+    def __rsub__(self, other: 'UnitBase | Quantity'):
+        return -_sub(self, other)
+
+    def __mul__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
         return _mul(self, other)
 
-    def __truediv__(self, other):
+    def __rmul__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
+        return _mul(self, other)
+
+    def __truediv__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
         return _div(self, other)
 
-    def __pow__(self, exponent):
+    def __rtruediv__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
+        return _div(other, self)
+
+    def __pow__(self, exponent: int | float):
         return _pow(self, exponent)
 
     @abstractmethod
@@ -65,6 +81,8 @@ class UnitBase:
         ret = deepcopy(other**1)
         ret.multiplier = self.si().multiplier / other.si().multiplier
         return ret
+
+U = TypeVar('U', bound=UnitBase)
 
 # %% Unit
 class Unit(UnitBase):
@@ -255,7 +273,7 @@ class ComplexUnit(UnitBase):
         """
 
         expanded = deepcopy(self.records)
-        keys_sorted_by_depth: list[Unit] = sorted(self.records.keys(), key=lambda x: x.depth, reverse=True)
+        keys_sorted_by_depth = sorted(self.records.keys(), key=lambda x: x.depth, reverse=True)
 
         if len(keys_sorted_by_depth) > 0:
             most_key, most_value = keys_sorted_by_depth[0], self.records[keys_sorted_by_depth[0]]
@@ -322,44 +340,162 @@ class FixedUnit(Unit):
     def si(self):
         return self.base.si()
 
+# %% Quantity
+
+@total_ordering
+class Quantity:
+    def __init__(self, value: int | float, unit: U):
+        """
+        :param value: int | float
+        :param unit: bound of UnitBase
+        """
+
+        self.value = value * unit.multiplier
+        self.unit = unit
+        unit.multiplier = 1
+
+    def to_complex_unit(self) -> ComplexUnit:
+        _cp = self.unit ** 1
+        _cp.multiplier = self.value
+        return _cp
+
+    def __str__(self) -> str:
+        return f"{self.value} {self.unit}"
+
+    def _repr_latex_(self) -> str:
+        return self.to_complex_unit()._repr_latex_()
+
+    def __repr__(self) -> str:
+        return f"<Quantity {self.value} {self.unit}>"
+
+    def __eq__(self, other: 'Quantity | UnitBase | int | float') -> bool:
+        return _eq(self, other)
+
+    @overload
+    def __lt__(self, other: 'Quantity') -> bool:
+        if self.unit.dimension != other.unit.dimension:
+            raise DimensionMismatchError(self.unit.dimension, other.unit.dimension, "Cannot compare quantities with different dimensions")
+
+        return self.value < other.value
+
+    @overload
+    def __lt__(self, other: UnitBase) -> bool:
+        if self.unit.dimension != other.dimension:
+            raise DimensionMismatchError(self.unit.dimension, other.dimension, "Cannot compare quantities with different dimensions")
+
+        # TODO: 0K, 0C는 둘 다 0이지만 0K < 0C이다. 이를 위해 offset을 고려해야 한다.
+        return self.value < other.multiplier
+
+    @overload
+    def __lt__(self, other: int | float) -> bool:
+        if other == 0:
+            # TODO: -A를 fix한 B라는 unit이 있으면 단순 multipler 비교만으로는 비교할 수 없다.
+            return self.value < 0
+        else:
+            return NotImplemented
+
+    @overload
+    def __lt__(self, other) -> bool:
+        return NotImplemented
+
+    @dispatch
+    def __lt__(self, other):
+        pass
+
+    def __add__(self, other: 'Quantity | UnitBase'):
+        return _add(self, other)
+
+    def __radd__(self, other: 'Quantity | UnitBase'):
+        return self.__add__(other)
+
+    def __sub__(self, other: 'Quantity | UnitBase'):
+        return _sub(self, other)
+
+    def __rsub__(self, other: 'Quantity | UnitBase'):
+        return -self.__sub__(other)
+
+    def __mul__(self, other: 'Quantity | UnitBase | int | float'):
+        return _mul(self, other)
+
+    def __rmul__(self, other: 'Quantity | UnitBase | int | float'):
+        return self.__mul__(other)
+
+    def __truediv__(self, other: 'Quantity | UnitBase | int | float'):
+        return _div(self, other)
+
+    def __rtruediv__(self, other: 'Quantity | UnitBase | int | float'):
+        return self.__truediv__(other) ** -1
+
+    def __pow__(self, exponent: int | float):
+        return _pow(self, exponent)
+
+    def __pos__(self):
+        return self
+
+    def __neg__(self):
+        return Quantity(-self.value, self.unit)
+
+    def __deepcopy__(self, memo=None):
+        if memo is None:
+            memo = {}
+        return Quantity(self.value, deepcopy(self.unit, memo))
+
 # %% _eq
-@dispatch(ComplexUnit, ComplexUnit)
-def _eq(a, b, except_multiplier=False) -> bool:
+@overload
+def _eq(a: ComplexUnit, b: ComplexUnit, except_multiplier=False) -> bool:
     if except_multiplier:
         return a.dimension == b.dimension and a.offset == b.offset and a.records == b.records
     else:
         return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.records == b.records
 
-@dispatch(ComplexUnit, Unit)
-def _eq(a, b, except_multiplier=False) -> bool:
+@overload
+def _eq(a: ComplexUnit, b: Unit, except_multiplier=False) -> bool:
     if except_multiplier:
         return a.dimension == b.dimension and a.offset == b.offset and a.records == {b: 1}
     else:
-        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.records == {
-            b: 1}
+        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.records == {b: 1}
 
-@dispatch(Unit, ComplexUnit)
-def _eq(a, b, except_multiplier=False) -> bool:
+@overload
+def _eq(a: Unit, b: ComplexUnit, except_multiplier=False) -> bool:
     if except_multiplier:
         return a.dimension == b.dimension and a.offset == b.offset and b.records == {a: 1}
     else:
         return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and b.records == {
             a: 1}
 
-@dispatch(Unit, Unit)
-def _eq(a, b, except_multiplier=False) -> bool:
+@overload
+def _eq(a: Unit, b: Unit, except_multiplier=False) -> bool:
     if except_multiplier:
         return a.dimension == b.dimension and a.offset == b.offset and a.symbol == b.symbol
     else:
         return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.symbol == b.symbol
 
-@dispatch(object, object)
+@overload
+def _eq(a: Quantity, b: Quantity) -> bool:
+    return _eq(a.to_complex_unit(), b.to_complex_unit())
+
+@overload
+def _eq(a: Quantity, b: UnitBase) -> bool:
+    return _eq(a.to_complex_unit(), b)
+
+@overload
+def _eq(a: Quantity, b: int | float) -> bool:
+    if b == 0:
+        return a.value == 0
+    else:
+        return NotImplemented
+
+@overload
 def _eq(a, b, except_multiplier=False) -> bool:
-    return False
+    return NotImplemented
+
+@dispatch
+def _eq(a, b, except_multiplier=False):
+    pass
 
 # %% _add
-@dispatch(ComplexUnit, ComplexUnit)
-def _add(a, b):
+@overload
+def _add(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
@@ -368,8 +504,8 @@ def _add(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(ComplexUnit, Unit)
-def _add(a, b):
+@overload
+def _add(a: ComplexUnit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
@@ -379,8 +515,8 @@ def _add(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, ComplexUnit)
-def _add(a, b):
+@overload
+def _add(a: Unit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
@@ -390,8 +526,8 @@ def _add(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, Unit)
-def _add(a, b):
+@overload
+def _add(a: Unit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
@@ -401,13 +537,25 @@ def _add(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(object, object)
+@overload
+def _add(a: Quantity, b: Quantity) -> Quantity:
+    return Quantity(1, _add(a.to_complex_unit(), b.to_complex_unit()))
+
+@overload
+def _add(a: Quantity, b: UnitBase) -> Quantity:
+    return Quantity(1, _add(a.to_complex_unit(), b))
+
+@overload
 def _add(a, b):
     return NotImplemented
+
+@dispatch
+def _add(a, b):
+    pass
 
 # %% _sub
-@dispatch(ComplexUnit, ComplexUnit)
-def _sub(a, b):
+@overload
+def _sub(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
@@ -416,8 +564,8 @@ def _sub(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(ComplexUnit, Unit)
-def _sub(a, b):
+@overload
+def _sub(a: ComplexUnit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
@@ -426,8 +574,8 @@ def _sub(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, ComplexUnit)
-def _sub(a, b):
+@overload
+def _sub(a: Unit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
@@ -436,8 +584,8 @@ def _sub(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, Unit)
-def _sub(a, b):
+@overload
+def _sub(a: Unit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
@@ -446,13 +594,25 @@ def _sub(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(object, object)
+@overload
+def _sub(a: Quantity, b: Quantity) -> Quantity:
+    return Quantity(1, _sub(a.to_complex_unit(), b.to_complex_unit()))
+
+@overload
+def _sub(a: Quantity, b: UnitBase) -> Quantity:
+    return Quantity(1, _sub(a.to_complex_unit(), b))
+
+@overload
 def _sub(a, b):
     return NotImplemented
 
+@dispatch
+def _sub(a, b):
+    pass
+
 # %% _mul
-@dispatch(ComplexUnit, ComplexUnit)
-def _mul(a, b):
+@overload
+def _mul(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     merged_records = deepcopy(a.records)
     for key, value in b.records.items():
         merged_records[key] += value
@@ -463,8 +623,8 @@ def _mul(a, b):
     return ret
 
 # TODO: offset도 따로 고려해야 함, dimension이 같은 지 비교하는게 더 옳아보이는데 일단은 이렇게 놔둠
-@dispatch(ComplexUnit, Unit)
-def _mul(a, b):
+@overload
+def _mul(a: ComplexUnit, b: Unit) -> ComplexUnit:
     merged_records = deepcopy(a.records)
     merged_records[b] += 1
 
@@ -473,8 +633,8 @@ def _mul(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, ComplexUnit)
-def _mul(a, b):
+@overload
+def _mul(a: Unit, b: ComplexUnit) -> ComplexUnit:
     merged_records = deepcopy(b.records)
     merged_records[a] += 1
 
@@ -483,8 +643,8 @@ def _mul(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, Unit)
-def _mul(a, b):
+@overload
+def _mul(a: Unit, b: Unit) -> ComplexUnit:
     if _eq(a, b):
         ret = ComplexUnit(ArithmeticDict({a: 2}))
     elif _eq(a, b, except_multiplier=True):
@@ -496,13 +656,45 @@ def _mul(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(object, object)
+@overload
+def _mul(a: UnitBase, b: int | float) -> Quantity:
+    return Quantity(b, a)
+
+@overload
+def _mul(a: int | float, b: UnitBase) -> Quantity:
+    return Quantity(a, b)
+
+@overload
+def _mul(a: UnitBase, b: list[int | float] | tuple[int | float, ...] | ndarray) -> ndarray:
+    return array(b) * a
+
+@overload
+def _mul(a: list[int | float] | tuple[int | float, ...] | ndarray, b: UnitBase) -> ndarray:
+    return array(a) * b
+
+@overload
+def _mul(a: Quantity, b: Quantity) -> Quantity:
+    return Quantity(1, _mul(a.to_complex_unit(), b.to_complex_unit()))
+
+@overload
+def _mul(a: Quantity, b: UnitBase) -> Quantity:
+    return Quantity(1, _mul(a.to_complex_unit(), b))
+
+@overload
+def _mul(a: Quantity, b: int | float) -> Quantity:
+    return Quantity(a.value * b, a.unit)
+
+@overload
 def _mul(a, b):
     return NotImplemented
 
+@dispatch
+def _mul(a, b):
+    pass
+
 # %% _div
-@dispatch(ComplexUnit, ComplexUnit)
-def _div(a, b):
+@overload
+def _div(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     merged_records = deepcopy(a.records)
     for key, value in b.records.items():
         merged_records[key] -= value
@@ -512,8 +704,8 @@ def _div(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(ComplexUnit, Unit)
-def _div(a, b):
+@overload
+def _div(a: ComplexUnit, b: Unit) -> ComplexUnit:
     merged_records = deepcopy(a.records)
     merged_records[b] -= 1
 
@@ -522,8 +714,8 @@ def _div(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, ComplexUnit)
-def _div(a, b):
+@overload
+def _div(a: Unit, b: ComplexUnit) -> ComplexUnit:
     merged_records = -b.records
     merged_records[a] += 1
 
@@ -532,8 +724,8 @@ def _div(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(Unit, Unit)
-def _div(a, b):
+@overload
+def _div(a: Unit, b: Unit) -> ComplexUnit:
     if _eq(a, b):
         ret = ComplexUnit(ArithmeticDict({a: 0}))
     elif _eq(a, b, except_multiplier=True):
@@ -545,27 +737,67 @@ def _div(a, b):
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-@dispatch(object, object)
+@overload
+def _div(a: UnitBase, b: int | float) -> Quantity:
+    return Quantity(1 / b, a)
+
+@overload
+def _div(a: int | float, b: UnitBase) -> Quantity:
+    return Quantity(a, b ** -1)
+
+@overload
+def _div(a: UnitBase, b: list[int | float] | tuple[int | float, ...] | ndarray) -> ndarray:
+    return array(b) / a
+
+@overload
+def _div(a: list[int | float] | tuple[int | float, ...] | ndarray, b: UnitBase) -> ndarray:
+    return array(a) / b
+
+@overload
+def _div(a: Quantity, b: Quantity) -> Quantity:
+    return Quantity(1, _div(a.to_complex_unit(), b.to_complex_unit()))
+
+@overload
+def _div(a: Quantity, b: UnitBase) -> Quantity:
+    return Quantity(1, _div(a.to_complex_unit(), b))
+
+@overload
+def _div(a: Quantity, b: int | float) -> Quantity:
+    return Quantity(a.value / b, a.unit)
+
+@overload
 def _div(a, b):
     return NotImplemented
 
+@dispatch
+def _div(a, b):
+    pass
+
 # %% _pow
-@dispatch(ComplexUnit, (int, float))
-def _pow(a, exponent):
+@overload
+def _pow(a: ComplexUnit, exponent: int | float) -> ComplexUnit:
     ret = ComplexUnit(ArithmeticDict({unit: exp * exponent for unit, exp in a.records.items()}))
     ret.multiplier = a.multiplier ** exponent
     ret.depth = a.depth + 1
     return ret
 
-@dispatch(Unit, (int, float))
-def _pow(a, exponent):
+@overload
+def _pow(a: Unit, exponent: int | float) -> ComplexUnit:
     ret = ComplexUnit(ArithmeticDict({a: exponent}))
     ret.multiplier = a.multiplier ** exponent
     ret.depth = a.depth + 1
     return ret
 
-@dispatch(object, object)
+@overload
+def _pow(a: Quantity, exponent: int | float) -> Quantity:
+    return Quantity(1, _pow(a.to_complex_unit(), exponent))
+
+@overload
 def _pow(a, exponent):
     return NotImplemented
+
+@dispatch
+def _pow(a, exponent):
+    pass
 
 # %%

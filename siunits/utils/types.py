@@ -1,6 +1,5 @@
 from _collections_abc import dict_items, dict_keys, dict_values
 from sortedcontainers import SortedDict, SortedItemsView, SortedKeysView, SortedValuesView
-from .functions import commutative
 
 class DefaultSortedDict[T, U](SortedDict[T, U]):
     def __init__(self, default_factory=None, *args, **kwargs):
@@ -11,7 +10,7 @@ class DefaultSortedDict[T, U](SortedDict[T, U]):
         self[key] = value = self.default_factory() if self.default_factory is not None else None
         return value
 
-@commutative
+# @commutative
 class ArithmeticDict[K](DefaultSortedDict[K, int | float]):
     def __init__(self, *args, **kwargs):
         super().__init__(int, *args, **kwargs)

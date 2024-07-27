@@ -1,4 +1,4 @@
-from siunits.unit import Unit, FixedUnit
+from siunits.types import Unit, FixedUnit
 from siunits.dimension import Dimension
 
 kg = Unit('kg', Dimension(mass=1))
