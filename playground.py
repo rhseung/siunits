@@ -1,6 +1,9 @@
 import siunits as u
 from siunits.predefined import *
 
-unit = [1, 2, 3]*m
-print(unit**0.3 + 2*unit**0.5)
+Mg = u.unit.set('Mg', 1e6 * g)
 
+print(kg + g, kg + 2*Mg)
+print(2*kg + 3*g)
+print(2 * g + 3 * Mg) # 3000002 g
+print(2 * kg + 3 * g)

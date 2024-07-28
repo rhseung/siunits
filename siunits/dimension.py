@@ -126,9 +126,4 @@ class DimensionMismatchError(ValueError):
     def __init__(self, dim1: Dimension, dim2: Dimension, message: str='Dimension mismatch') -> None:
         super().__init__(f"{message}: {dim1} and {dim2}")
 
-if __name__ == "__main__":
-    dim = Dimension(length=1, mass=1, time=1, current=1, temperature=1)
-    dim2 = Dimension(length=1, mass=3, time=2, current=1, temperature=1)
-    print(dim + dim2)
-    print(dim - dim2)
-    print(dim * dim2)
+__all__ = ['Dimension', 'DimensionMismatchError']

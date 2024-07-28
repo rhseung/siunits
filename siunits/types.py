@@ -11,13 +11,16 @@ from siunits.utils import ArithmeticDict, product, pretty, SMALL_SPACE, MULTIPLY
     MULTIPLY_SIGN_LATEX
 from siunits.dimension import Dimension, DimensionMismatchError
 
+Number = int | float
+ArrayLike = list[Number] | tuple[Number, ...] | ndarray | range
+
 # %% UnitBase
 
 @define(hash=False, eq=False)
 class UnitBase:
     dimension: Dimension
-    offset: int | float = 0
-    multiplier: int | float = 1
+    offset: Number = 0
+    multiplier: Number = 1
     depth: int = 0
 
     def __eq__(self, other):
@@ -35,19 +38,19 @@ class UnitBase:
     def __rsub__(self, other: 'UnitBase | Quantity'):
         return -_sub(self, other)
 
-    def __mul__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
+    def __mul__(self, other: 'UnitBase | Quantity | Number | ArrayLike'):
         return _mul(self, other)
 
-    def __rmul__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
+    def __rmul__(self, other: 'UnitBase | Quantity | Number | ArrayLike'):
         return _mul(self, other)
 
-    def __truediv__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
+    def __truediv__(self, other: 'UnitBase | Quantity | Number | ArrayLike'):
         return _div(self, other)
 
-    def __rtruediv__(self, other: 'UnitBase | Quantity | int | float | list[int | float] | tuple[int | float, ...] | ndarray'):
+    def __rtruediv__(self, other: 'UnitBase | Quantity | Number | ArrayLike'):
         return _div(other, self)
 
-    def __pow__(self, exponent: int | float):
+    def __pow__(self, exponent: Number):
         return _pow(self, exponent)
 
     @abstractmethod
@@ -88,16 +91,19 @@ U = TypeVar('U', bound=UnitBase)
 class Unit(UnitBase):
     _instances: dict[tuple, 'Unit'] = {}
 
-    def __new__(cls, symbol: str, dimension: Dimension, offset: int | float = 0, multiplier: int | float = 1, *args,
+    def __new__(cls, symbol: str, dimension: Dimension, offset: Number = 0, multiplier: Number = 1, *args,
                 **kwargs):
         key = (cls, symbol, dimension, offset, multiplier)
+
+        if len(cls._instances) > 7:
+            raise ValueError("SI units should be defined only once")
 
         if key not in cls._instances:
             cls._instances[key] = super().__new__(cls)
 
         return cls._instances[key]
 
-    def __init__(self, symbol: str, dimension: Dimension, offset: int | float = 0, multiplier: int | float = 1, *, latex_symbol: str | None = None):
+    def __init__(self, symbol: str, dimension: Dimension, offset: Number = 0, multiplier: Number = 1, *, latex_symbol: str | None = None):
         super().__init__(dimension, offset, multiplier)
         self.symbol = symbol
         self.latex_symbol = symbol if latex_symbol is None else latex_symbol
@@ -137,19 +143,6 @@ class Unit(UnitBase):
         else:
             return a < b
 
-    def __class_getitem__(cls, symbol: str) -> 'Unit | list[Unit]':
-        found: list['Unit'] = []
-        for k in cls._instances:
-            if k[0] == symbol:
-                found.append(cls._instances[k])
-
-        if len(found) == 0:
-            raise KeyError(f"No unit with symbol '{symbol}'")
-        elif len(found) == 1:
-            return found[0]
-        else:
-            return found
-
     def __deepcopy__(self, memo=None):
         if memo is None:
             memo = {}
@@ -163,7 +156,7 @@ class Unit(UnitBase):
 
 # %% ComplexUnit
 class ComplexUnit(UnitBase):
-    def __init__(self, records: ArithmeticDict[Unit], offset: int | float = 0, multiplier: int | float = 1):
+    def __init__(self, records: ArithmeticDict[Unit], offset: Number = 0, multiplier: Number = 1):
         """
         :param records: A dictionary of units and their exponents
         """
@@ -178,7 +171,7 @@ class ComplexUnit(UnitBase):
         super().__init__(dimension, offset, multiplier, depth)
 
         # set records
-        _records: dict[Unit, int | float] = {}
+        _records: dict[Unit, Number] = {}
         for unit, exponent in records.items():
             if exponent != 0:
                 _records[unit] = exponent
@@ -303,7 +296,7 @@ class ComplexUnit(UnitBase):
 
 # %% FixedUnit
 class FixedUnit(Unit):
-    def __new__(cls, symbol: str, base: ComplexUnit, offset: int | float = 0, multiplier: int | float = 1, *args,
+    def __new__(cls, symbol: str, base: ComplexUnit, offset: Number = 0, multiplier: Number = 1, *args,
                 **kwargs):
         key = (cls, symbol, base.dimension, base.offset, base.multiplier)
 
@@ -312,7 +305,7 @@ class FixedUnit(Unit):
 
         return cls._instances[key]
 
-    def __init__(self, symbol: str, base: ComplexUnit, offset: int | float = 0, multiplier: int | float = 1, *, latex_symbol: str | None = None):
+    def __init__(self, symbol: str, base: ComplexUnit, offset: Number = 0, multiplier: Number = 1, *, latex_symbol: str | None = None):
         super().__init__(symbol, base.dimension, offset, 1, latex_symbol=latex_symbol)
 
         base.multiplier *= multiplier
@@ -344,9 +337,9 @@ class FixedUnit(Unit):
 
 @total_ordering
 class Quantity:
-    def __init__(self, value: int | float, unit: U):
+    def __init__(self, value: Number, unit: U):
         """
-        :param value: int | float
+        :param value: Number
         :param unit: bound of UnitBase
         """
 
@@ -366,9 +359,9 @@ class Quantity:
         return self.to_complex_unit()._repr_latex_()
 
     def __repr__(self) -> str:
-        return f"<Quantity {self.value} {self.unit}>"
+        return f"<Quantity {pretty(self.value)} {self.unit}>"
 
-    def __eq__(self, other: 'Quantity | UnitBase | int | float') -> bool:
+    def __eq__(self, other: 'Quantity | UnitBase | Number') -> bool:
         return _eq(self, other)
 
     @overload
@@ -387,7 +380,7 @@ class Quantity:
         return self.value < other.multiplier
 
     @overload
-    def __lt__(self, other: int | float) -> bool:
+    def __lt__(self, other: Number) -> bool:
         if other == 0:
             # TODO: -A를 fix한 B라는 unit이 있으면 단순 multipler 비교만으로는 비교할 수 없다.
             return self.value < 0
@@ -414,19 +407,19 @@ class Quantity:
     def __rsub__(self, other: 'Quantity | UnitBase'):
         return -self.__sub__(other)
 
-    def __mul__(self, other: 'Quantity | UnitBase | int | float'):
+    def __mul__(self, other: 'Quantity | UnitBase | Number'):
         return _mul(self, other)
 
-    def __rmul__(self, other: 'Quantity | UnitBase | int | float'):
+    def __rmul__(self, other: 'Quantity | UnitBase | Number'):
         return self.__mul__(other)
 
-    def __truediv__(self, other: 'Quantity | UnitBase | int | float'):
+    def __truediv__(self, other: 'Quantity | UnitBase | Number'):
         return _div(self, other)
 
-    def __rtruediv__(self, other: 'Quantity | UnitBase | int | float'):
+    def __rtruediv__(self, other: 'Quantity | UnitBase | Number'):
         return self.__truediv__(other) ** -1
 
-    def __pow__(self, exponent: int | float):
+    def __pow__(self, exponent: Number):
         return _pow(self, exponent)
 
     def __pos__(self):
@@ -444,27 +437,20 @@ class Quantity:
 @overload
 def _eq(a: ComplexUnit, b: ComplexUnit, except_multiplier=False) -> bool:
     if except_multiplier:
-        return a.dimension == b.dimension and a.offset == b.offset and a.records == b.records
+        return a.dimension == b.dimension and a.offset == b.offset and a.si().records == b.si().records
     else:
-        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.records == b.records
+        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.si().records == b.si().records
 
 @overload
 def _eq(a: ComplexUnit, b: Unit, except_multiplier=False) -> bool:
-    if except_multiplier:
-        return a.dimension == b.dimension and a.offset == b.offset and a.records == {b: 1}
-    else:
-        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.records == {b: 1}
+    return _eq(a.si(), (b**1).si(), except_multiplier)
 
 @overload
 def _eq(a: Unit, b: ComplexUnit, except_multiplier=False) -> bool:
-    if except_multiplier:
-        return a.dimension == b.dimension and a.offset == b.offset and b.records == {a: 1}
-    else:
-        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and b.records == {
-            a: 1}
+    return _eq((a**1).si(), b.si(), except_multiplier)
 
 @overload
-def _eq(a: Unit, b: Unit, except_multiplier=False) -> bool:
+def _eq(a: Unit, b: Unit, except_multiplier=False) -> bool:    
     if except_multiplier:
         return a.dimension == b.dimension and a.offset == b.offset and a.symbol == b.symbol
     else:
@@ -479,7 +465,7 @@ def _eq(a: Quantity, b: UnitBase) -> bool:
     return _eq(a.to_complex_unit(), b)
 
 @overload
-def _eq(a: Quantity, b: int | float) -> bool:
+def _eq(a: Quantity, b: Number) -> bool:
     if b == 0:
         return a.value == 0
     else:
@@ -499,8 +485,12 @@ def _add(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
+    if a.depth > b.depth:
+        a, b = b, a
+    
+    a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict(a.records))
-    ret.multiplier = a.multiplier + b.multiplier
+    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -510,8 +500,9 @@ def _add(a: ComplexUnit, b: Unit) -> ComplexUnit:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
     # TODO: offset, multiplier 고려해서 dimension이 같을 때만 더하기 가능하도록 수정, 지금은 완전히 같은 단위라고 취급하고 더하게 함
+    a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({b: 1}))
-    ret.multiplier = a.multiplier + b.multiplier
+    ret.multiplier = (a_.multiplier + b_.multiplier) / (b_.multiplier / b.multiplier)   # TEST 필요
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -521,8 +512,9 @@ def _add(a: Unit, b: ComplexUnit) -> ComplexUnit:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
     # TODO: offset, multiplier 고려해서 dimension이 같을 때만 더하기 가능하도록 수정, 지금은 완전히 같은 단위라고 취급하고 더하게 함
+    a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = a.multiplier + b.multiplier
+    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier)   # TEST 필요
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -532,8 +524,12 @@ def _add(a: Unit, b: Unit) -> ComplexUnit:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
     # TODO: offset, multiplier 고려해서 dimension이 같을 때만 더하기 가능하도록 수정, 지금은 완전히 같은 단위라고 취급하고 더하게 함
+    if a.depth > b.depth:
+        a, b = b, a
+    
+    a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = a.multiplier + b.multiplier
+    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -559,8 +555,12 @@ def _sub(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
+    if a.depth > b.depth:
+        a, b = b, a
+
+    a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict(a.records))
-    ret.multiplier = a.multiplier - b.multiplier
+    ret.multiplier = (a_.multiplier - b_.multiplier) / (a_.multiplier / a.multiplier)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -569,8 +569,9 @@ def _sub(a: ComplexUnit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
+    a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({b: 1}))
-    ret.multiplier = a.multiplier - b.multiplier
+    ret.multiplier = (a_.multiplier - b_.multiplier) / (b_.multiplier / b.multiplier)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -579,8 +580,9 @@ def _sub(a: Unit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
+    a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = a.multiplier - b.multiplier
+    ret.multiplier = (a_.multiplier - b_.multiplier) / (a_.multiplier / a.multiplier)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -589,8 +591,11 @@ def _sub(a: Unit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
+    if a.depth > b.depth:
+        a, b = b, a
+
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = a.multiplier - b.multiplier
+    ret.multiplier = (a.multiplier - b.multiplier) / (a.multiplier / b.multiplier)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -657,19 +662,19 @@ def _mul(a: Unit, b: Unit) -> ComplexUnit:
     return ret
 
 @overload
-def _mul(a: UnitBase, b: int | float) -> Quantity:
+def _mul(a: UnitBase, b: Number) -> Quantity:
     return Quantity(b, a)
 
 @overload
-def _mul(a: int | float, b: UnitBase) -> Quantity:
+def _mul(a: Number, b: UnitBase) -> Quantity:
     return Quantity(a, b)
 
 @overload
-def _mul(a: UnitBase, b: list[int | float] | tuple[int | float, ...] | ndarray) -> ndarray:
+def _mul(a: UnitBase, b: ArrayLike) -> ndarray:
     return array(b) * a
 
 @overload
-def _mul(a: list[int | float] | tuple[int | float, ...] | ndarray, b: UnitBase) -> ndarray:
+def _mul(a: ArrayLike, b: UnitBase) -> ndarray:
     return array(a) * b
 
 @overload
@@ -681,7 +686,7 @@ def _mul(a: Quantity, b: UnitBase) -> Quantity:
     return Quantity(1, _mul(a.to_complex_unit(), b))
 
 @overload
-def _mul(a: Quantity, b: int | float) -> Quantity:
+def _mul(a: Quantity, b: Number) -> Quantity:
     return Quantity(a.value * b, a.unit)
 
 @overload
@@ -738,19 +743,19 @@ def _div(a: Unit, b: Unit) -> ComplexUnit:
     return ret
 
 @overload
-def _div(a: UnitBase, b: int | float) -> Quantity:
+def _div(a: UnitBase, b: Number) -> Quantity:
     return Quantity(1 / b, a)
 
 @overload
-def _div(a: int | float, b: UnitBase) -> Quantity:
+def _div(a: Number, b: UnitBase) -> Quantity:
     return Quantity(a, b ** -1)
 
 @overload
-def _div(a: UnitBase, b: list[int | float] | tuple[int | float, ...] | ndarray) -> ndarray:
+def _div(a: UnitBase, b: ArrayLike) -> ndarray:
     return array(b) / a
 
 @overload
-def _div(a: list[int | float] | tuple[int | float, ...] | ndarray, b: UnitBase) -> ndarray:
+def _div(a: ArrayLike, b: UnitBase) -> ndarray:
     return array(a) / b
 
 @overload
@@ -762,7 +767,7 @@ def _div(a: Quantity, b: UnitBase) -> Quantity:
     return Quantity(1, _div(a.to_complex_unit(), b))
 
 @overload
-def _div(a: Quantity, b: int | float) -> Quantity:
+def _div(a: Quantity, b: Number) -> Quantity:
     return Quantity(a.value / b, a.unit)
 
 @overload
@@ -775,21 +780,21 @@ def _div(a, b):
 
 # %% _pow
 @overload
-def _pow(a: ComplexUnit, exponent: int | float) -> ComplexUnit:
+def _pow(a: ComplexUnit, exponent: Number) -> ComplexUnit:
     ret = ComplexUnit(ArithmeticDict({unit: exp * exponent for unit, exp in a.records.items()}))
     ret.multiplier = a.multiplier ** exponent
     ret.depth = a.depth + 1
     return ret
 
 @overload
-def _pow(a: Unit, exponent: int | float) -> ComplexUnit:
+def _pow(a: Unit, exponent: Number) -> ComplexUnit:
     ret = ComplexUnit(ArithmeticDict({a: exponent}))
     ret.multiplier = a.multiplier ** exponent
     ret.depth = a.depth + 1
     return ret
 
 @overload
-def _pow(a: Quantity, exponent: int | float) -> Quantity:
+def _pow(a: Quantity, exponent: Number) -> Quantity:
     return Quantity(1, _pow(a.to_complex_unit(), exponent))
 
 @overload
@@ -801,3 +806,5 @@ def _pow(a, exponent):
     pass
 
 # %%
+
+__all__ = ['Unit', 'FixedUnit']
