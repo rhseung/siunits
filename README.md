@@ -84,17 +84,17 @@ print(np.arange(1, 5) * N)
 
 `list[int | float]`, `tuple[int | float]`, `range`, `numpy.ndarray` 등의 자료형과 단위를 곱할 경우 `numpy.ndarray` 형의 객체가 반환됩니다.
 
-> ```ipython
+> ```python
 > (3*kg)**2 / (2*m)**3
 > ```
 > $\mathrm{ 1.125 \dfrac{kg^2}{m^3} }$
 >
-> ```ipython
+> ```python
 > ohm
 > ```
 > $\mathrm{ Ω }$
 >
-> ```ipython
+> ```python
 > ohm.si()
 > ```
 > $\mathrm{ \dfrac{kg \cdot m^2}{A^2 \cdot s^3} }$
