@@ -63,7 +63,9 @@ def test_add_complex_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
         C_A + C_C
     with pytest.raises(DimensionMismatchError):
         C_B + C_C
-    # TODO: assert C_A + C_A2 == ComplexUnit(ArithmeticDict({A: 1}), multiplier=2)
+
+    assert C_A + C_A2 == ComplexUnit(ArithmeticDict({A: 1}), multiplier=2)
+    assert C_A2 + C_A == ComplexUnit(ArithmeticDict({A2: 1}), multiplier=2)
 
 def test_add_unit_and_complex(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert A + C_A == ComplexUnit(ArithmeticDict({A: 1}), multiplier=2)
@@ -81,10 +83,9 @@ def test_add_unit_and_complex(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
 
 # Subtraction Tests
 def test_sub_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
-    # todo: multiplier가 0이면 단위 무시하고 전부 같다고 취급. 0과도 같다고 취급.
-    assert A - A == ComplexUnit(ArithmeticDict({A: 1}), multiplier=0)
-    assert B - B == ComplexUnit(ArithmeticDict({B: 1}), multiplier=0)
-    assert C - C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=0)
+    assert A - A == 0
+    assert B - B == 0
+    assert C - C == 0
     with pytest.raises(DimensionMismatchError):
         A - B
     with pytest.raises(DimensionMismatchError):
@@ -93,26 +94,25 @@ def test_sub_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
         B - C
 
 def test_sub_complex_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
-    # todo: multiplier가 0이면 단위 무시하고 전부 같다고 취급. 0과도 같다고 취급.
-    assert C_A - C_A == ComplexUnit(ArithmeticDict({A: 1}), multiplier=0)
-    assert C_B - C_B == ComplexUnit(ArithmeticDict({B: 1}), multiplier=0)
-    assert C_C - C_C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=0)
+    assert C_A - C_A == 0
+    assert C_B - C_B == 0
+    assert C_C - C_C == 0
     with pytest.raises(DimensionMismatchError):
         C_A - C_B
     with pytest.raises(DimensionMismatchError):
         C_A - C_C
     with pytest.raises(DimensionMismatchError):
         C_B - C_C
-    # TODO: assert C_A - C_A2 == ComplexUnit(ArithmeticDict({A: 1}), multiplier=0)
+
+    assert C_A - C_A2 == 0
 
 def test_sub_unit_and_complex(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
-    # todo: multiplier가 0이면 단위 무시하고 전부 같다고 취급. 0과도 같다고 취급.
-    assert A - C_A == ComplexUnit(ArithmeticDict({A: 1}), multiplier=0)
-    assert C_A - A == ComplexUnit(ArithmeticDict({A: 1}), multiplier=0)
-    assert B - C_B == ComplexUnit(ArithmeticDict({B: 1}), multiplier=0)
-    assert C_B - B == ComplexUnit(ArithmeticDict({B: 1}), multiplier=0)
-    assert C - C_C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=0)
-    assert C_C - C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=0)
+    assert A - C_A == 0
+    assert C_A - A == 0
+    assert B - C_B == 0
+    assert C_B - B == 0
+    assert C - C_C == 0
+    assert C_C - C == 0
     with pytest.raises(DimensionMismatchError):
         A - C_B
     with pytest.raises(DimensionMismatchError):
@@ -136,7 +136,7 @@ def test_mul_complex_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert C_A * C_B == ComplexUnit(ArithmeticDict({A: 1, B: 1}))
     assert C_A * C_C == ComplexUnit(ArithmeticDict({A: 1, C: 1}))
     assert C_B * C_C == ComplexUnit(ArithmeticDict({B: 1, C: 1}))
-    # TODO: assert C_A * C_A2 == ComplexUnit(ArithmeticDict({A: 2}))
+    assert C_A * C_A2 == ComplexUnit(ArithmeticDict({A: 1, A2: 1}))
 
 def test_mul_unit_and_complex(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert A * C_A == ComplexUnit(ArithmeticDict({A: 2}))
@@ -165,7 +165,7 @@ def test_div_complex_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert C_A / C_B == ComplexUnit(ArithmeticDict({A: 1, B: -1}))
     assert C_A / C_C == ComplexUnit(ArithmeticDict({A: 1, C: -1}))
     assert C_B / C_C == ComplexUnit(ArithmeticDict({B: 1, C: -1}))
-    # TODO: assert C_A / C_A2 == ComplexUnit(ArithmeticDict())
+    assert C_A / C_A2 == ComplexUnit(ArithmeticDict({A: 1, A2: -1}))
 
 def test_div_unit_and_complex(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert A / C_A == ComplexUnit(ArithmeticDict())
@@ -192,8 +192,7 @@ def test_pow_complex_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
 # Complex operations with C_1 and C_2
 def test_complex_operations(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert C_1 + C_1 == ComplexUnit(ArithmeticDict({A: 2, B: 3, C: 1}), multiplier=2)
-    # todo: multiplier가 0이면 단위 무시하고 전부 같다고 취급. 0과도 같다고 취급.
-    assert C_1 - C_1 == ComplexUnit(ArithmeticDict({A: 2, B: 3, C: 1}), multiplier=0)
+    assert C_1 - C_1 == 0
     assert C_1 * C_2 == ComplexUnit(ArithmeticDict({A: 5, B: 5, C: 2}))
     assert C_1 / C_2 == ComplexUnit(ArithmeticDict({A: -1, B: 1}))
     assert C_1 ** 2 == ComplexUnit(ArithmeticDict({A: 4, B: 6, C: 2}))

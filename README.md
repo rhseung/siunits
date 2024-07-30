@@ -84,7 +84,20 @@ print(np.arange(1, 5) * N)
 
 `list[int | float]`, `tuple[int | float]`, `range`, `numpy.ndarray` 등의 자료형과 단위를 곱할 경우 `numpy.ndarray` 형의 객체가 반환됩니다.
 
-<img src="image.png" width="300">
+> ```ipython
+> (3*kg)**2 / (2*m)**3
+> ```
+> $\mathrm{ 1.125 \dfrac{kg^2}{m^3} }$
+>
+> ```ipython
+> ohm
+> ```
+> $\mathrm{ Ω }$
+>
+> ```ipython
+> ohm.si()
+> ```
+> $\mathrm{ \dfrac{kg \cdot m^2}{A^2 \cdot s^3} }$
 
 IPython 커널 환경에서 사용할 경우, Rich Output을 지원합니다.
 

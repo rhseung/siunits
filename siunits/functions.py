@@ -2,7 +2,7 @@ from siunits.predefined import Unit, FixedUnit
 from siunits.types import UnitBase, ComplexUnit, Quantity
 from abc import ABC
 
-class helper(ABC):
+class UnitRegistry(ABC):
     def find(self, symbol: str) -> Unit:
         """Find a unit with the given symbol.
 
@@ -45,27 +45,31 @@ class helper(ABC):
         
         return found
 
-    # TODO: offset 고려해서 수정해야함
-    def set(self, symbol: str, value: UnitBase | Quantity) -> FixedUnit:
-        # TODO: kwargs로 offset, multiplier, latex_symbol 등 추가
+    def set(self, symbol: str, value: UnitBase | Quantity, **kwargs) -> FixedUnit:
         """Set a unit with the given symbol and value.
 
         Args:
             symbol (str): The symbol of the unit to set.
             value (UnitBase | Quantity): The value of the unit to set. It can be a Unit, FixedUnit, Quantity, or ComplexUnit.
+            kwargs: Additional keyword arguments. <br>
+                - offset (float): The offset of the unit.  <br>
+                - multiplier (float): The multiplier of the unit. <br>
+                - latex_symbol (str): The LaTeX symbol of the unit.
 
         Returns:
             FixedUnit: The set unit.
         """
         
         if isinstance(value, Quantity):
-            return FixedUnit(symbol, value.to_complex_unit())
+            return FixedUnit(symbol, value.to_complex_unit(), **kwargs)
         elif isinstance(value, ComplexUnit):
-            return FixedUnit(symbol, value)
+            return FixedUnit(symbol, value, **kwargs)
         elif isinstance(value, FixedUnit):
-            return FixedUnit(symbol, value.base)
+            return FixedUnit(symbol, value.base, **kwargs)
         elif isinstance(value, Unit):
-            return FixedUnit(symbol, value**1)
+            return FixedUnit(symbol, value**1, **kwargs)
+        else:
+            raise TypeError(f"Unsupported type '{type(value)}' for value")
     
     def __setitem__(self, symbol: str, value: UnitBase | Quantity):
         return self.set(symbol, value)
@@ -83,13 +87,9 @@ class helper(ABC):
         else:
             return found
         
-    def __str__(self) -> str:
-        return "Unit helper"
-    
-    def __repr__(self) -> str:
-        return "Unit helper"
+    __str__ = __repr__ = lambda self: self.__class__.__name__
 
-unit = helper()
-unit.__doc__ = "Unit helper"
+unit = UnitRegistry()
+unit.__doc__ = UnitRegistry.__name__
 
 __all__ = ['unit']

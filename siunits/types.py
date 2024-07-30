@@ -7,9 +7,11 @@ from plum import dispatch
 from attrs import define
 from numpy import ndarray, array
 
-from siunits.utils import ArithmeticDict, product, pretty, SMALL_SPACE, MULTIPLY_SIGN, SMALL_SPACE_LATEX, \
-    MULTIPLY_SIGN_LATEX
-from siunits.dimension import Dimension, DimensionMismatchError
+from siunits.utils import (
+    ArithmeticDict, product, pretty,
+    SMALL_SPACE, MULTIPLY_SIGN, SMALL_SPACE_LATEX, MULTIPLY_SIGN_LATEX
+)
+from siunits.dimension import Dimension, DimensionMismatchError, dimensionless
 
 Number = int | float
 ArrayLike = list[Number] | tuple[Number, ...] | ndarray | range
@@ -33,10 +35,12 @@ class UnitBase:
         return _add(self, other)
 
     def __sub__(self, other: 'UnitBase | Quantity'):
+        # return self.__add__(-other)
         return _sub(self, other)
 
     def __rsub__(self, other: 'UnitBase | Quantity'):
         return -_sub(self, other)
+        # return -self.__sub__(other)
 
     def __mul__(self, other: 'UnitBase | Quantity | Number | ArrayLike'):
         return _mul(self, other)
@@ -48,10 +52,17 @@ class UnitBase:
         return _div(self, other)
 
     def __rtruediv__(self, other: 'UnitBase | Quantity | Number | ArrayLike'):
+        # return 1 / self.__truediv__(other)
         return _div(other, self)
 
     def __pow__(self, exponent: Number):
         return _pow(self, exponent)
+
+    def __pos__(self):
+        return self
+
+    def __neg__(self):
+        return self * -1
 
     @abstractmethod
     def __deepcopy__(self, memo=None):
@@ -73,13 +84,10 @@ class UnitBase:
     def si(self):
         pass
 
+    # test: 테스트 필요
     def to(self, other: 'UnitBase') -> 'UnitBase':
-        # TODO: Implement conversion
         if self.dimension != other.dimension:
             raise DimensionMismatchError(self.dimension, other.dimension, "Cannot convert units with different dimensions")
-
-        # atm**2.to(atm*Pa) -> 101325 atm*Pa
-        # multiplier도 고려해야함
 
         ret = deepcopy(other**1)
         ret.multiplier = self.si().multiplier / other.si().multiplier
@@ -95,8 +103,8 @@ class Unit(UnitBase):
                 **kwargs):
         key = (cls, symbol, dimension, offset, multiplier)
 
-        if len(cls._instances) > 7:
-            raise ValueError("SI units should be defined only once")
+        # if len(cls._instances) > 7:
+        #     raise ValueError("SI units should be defined only once")
 
         if key not in cls._instances:
             cls._instances[key] = super().__new__(cls)
@@ -123,7 +131,10 @@ class Unit(UnitBase):
         return ret + ">"
 
     def __hash__(self) -> int:  # type: ignore
-        return hash((self.symbol, self.dimension, self.offset, self.multiplier))
+        if self.multiplier == 0:    # todo: offset, 0K, 0C의 경우처럼 0이여도 다른 경우가 있을 수 있음
+            return hash(0)
+        else:
+            return hash((self.symbol, self.dimension, self.offset, self.multiplier))
 
     def __lt__(self, other) -> bool:
         if not isinstance(other, Unit):
@@ -163,7 +174,7 @@ class ComplexUnit(UnitBase):
 
         # set properties
         dimension = sum((unit.dimension * exponent for unit, exponent in records.items()), start=Dimension())
-        offset = offset  # TODO: Implement offset automatically
+        offset = offset  # TODO: offset 자동 계산
         multiplier = multiplier * product((unit.multiplier ** exponent for unit, exponent in records.items()))
         depth = max((unit.depth for unit in records.keys()), default=0) + 1
 
@@ -361,29 +372,30 @@ class Quantity:
     def __repr__(self) -> str:
         return f"<Quantity {pretty(self.value)} {self.unit}>"
 
-    def __eq__(self, other: 'Quantity | UnitBase | Number') -> bool:
+    def __eq__(self, other: 'Quantity | UnitBase | Number') -> bool:    # type: ignore
         return _eq(self, other)
 
+    # TEST: __lt__ 테스트
     @overload
     def __lt__(self, other: 'Quantity') -> bool:
         if self.unit.dimension != other.unit.dimension:
             raise DimensionMismatchError(self.unit.dimension, other.unit.dimension, "Cannot compare quantities with different dimensions")
 
-        return self.value < other.value
+        return self.si().value < other.si().value
 
     @overload
     def __lt__(self, other: UnitBase) -> bool:
         if self.unit.dimension != other.dimension:
             raise DimensionMismatchError(self.unit.dimension, other.dimension, "Cannot compare quantities with different dimensions")
 
-        # TODO: 0K, 0C는 둘 다 0이지만 0K < 0C이다. 이를 위해 offset을 고려해야 한다.
-        return self.value < other.multiplier
+        # TODO: offset, 0K, 0C는 둘 다 0이지만 0K < 0C이다.
+        return self.si().value < other.si().multiplier
 
     @overload
     def __lt__(self, other: Number) -> bool:
         if other == 0:
-            # TODO: -A를 fix한 B라는 unit이 있으면 단순 multipler 비교만으로는 비교할 수 없다.
-            return self.value < 0
+            # TEST: -A를 fix한 B라는 unit이 있으면 단순 multipler 비교만으로는 비교할 수 없다.
+            return self.si().value < 0
         else:
             return NotImplemented
 
@@ -433,11 +445,56 @@ class Quantity:
             memo = {}
         return Quantity(self.value, deepcopy(self.unit, memo))
 
+    def expand(self):
+        _cp = self.to_complex_unit().expand()
+        return Quantity(1, _cp)
+
+    def si(self):
+        _cp = self.to_complex_unit().si()
+        return Quantity(1, _cp)
+
+    def to(self, other: 'UnitBase | Quantity') -> 'Quantity':
+        _cp = self.to_complex_unit().to(other.to_complex_unit() if isinstance(other, Quantity) else other)
+        return Quantity(1, _cp)
+
 # %% _eq
+@overload
+def _eq(a: ComplexUnit, b: Number) -> bool:
+    if a.multiplier == 0:
+        return b == 0
+    elif a.dimension == dimensionless:
+        return a.si().multiplier == b
+    else:
+        return NotImplemented
+
+@overload
+def _eq(a: FixedUnit, b: Number) -> bool:
+    if a.multiplier == 0:
+        return b == 0
+    elif a.dimension == dimensionless:
+        return a.si().multiplier == b
+    else:
+        return NotImplemented
+
+@overload
+def _eq(a: UnitBase, b: Number) -> bool:
+    if a.multiplier == 0:
+        return b == 0
+    elif a.dimension == dimensionless:
+        return a.multiplier == b
+    else:
+        return NotImplemented
+
+@overload
+def _eq(a: Number, b: UnitBase) -> bool:
+    return _eq(b, a)
+
 @overload
 def _eq(a: ComplexUnit, b: ComplexUnit, except_multiplier=False) -> bool:
     if except_multiplier:
         return a.dimension == b.dimension and a.offset == b.offset and a.si().records == b.si().records
+    elif a.multiplier == 0 or b.multiplier == 0:   # todo: offset 고려
+        return a.multiplier == b.multiplier
     else:
         return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.si().records == b.si().records
 
@@ -447,29 +504,24 @@ def _eq(a: ComplexUnit, b: Unit, except_multiplier=False) -> bool:
 
 @overload
 def _eq(a: Unit, b: ComplexUnit, except_multiplier=False) -> bool:
-    return _eq((a**1).si(), b.si(), except_multiplier)
+    return _eq(b, a)
 
 @overload
 def _eq(a: Unit, b: Unit, except_multiplier=False) -> bool:    
     if except_multiplier:
-        return a.dimension == b.dimension and a.offset == b.offset and a.symbol == b.symbol
+        return a.dimension == b.dimension and a.offset == b.offset
+    elif a.multiplier == 0 or b.multiplier == 0:   # todo: offset 고려
+        return a.multiplier == b.multiplier
     else:
-        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier and a.symbol == b.symbol
+        return a.dimension == b.dimension and a.offset == b.offset and a.multiplier == b.multiplier
 
 @overload
 def _eq(a: Quantity, b: Quantity) -> bool:
     return _eq(a.to_complex_unit(), b.to_complex_unit())
 
 @overload
-def _eq(a: Quantity, b: UnitBase) -> bool:
+def _eq(a: Quantity, b: UnitBase | Number) -> bool:
     return _eq(a.to_complex_unit(), b)
-
-@overload
-def _eq(a: Quantity, b: Number) -> bool:
-    if b == 0:
-        return a.value == 0
-    else:
-        return NotImplemented
 
 @overload
 def _eq(a, b, except_multiplier=False) -> bool:
@@ -499,7 +551,7 @@ def _add(a: ComplexUnit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
-    # TODO: offset, multiplier 고려해서 dimension이 같을 때만 더하기 가능하도록 수정, 지금은 완전히 같은 단위라고 취급하고 더하게 함
+    # TODO: offset
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({b: 1}))
     ret.multiplier = (a_.multiplier + b_.multiplier) / (b_.multiplier / b.multiplier)   # TEST 필요
@@ -511,7 +563,7 @@ def _add(a: Unit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
-    # TODO: offset, multiplier 고려해서 dimension이 같을 때만 더하기 가능하도록 수정, 지금은 완전히 같은 단위라고 취급하고 더하게 함
+    # TODO: offset
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({a: 1}))
     ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier)   # TEST 필요
@@ -523,7 +575,7 @@ def _add(a: Unit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
         raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
-    # TODO: offset, multiplier 고려해서 dimension이 같을 때만 더하기 가능하도록 수정, 지금은 완전히 같은 단위라고 취급하고 더하게 함
+    # TODO: offset
     if a.depth > b.depth:
         a, b = b, a
     
@@ -627,7 +679,7 @@ def _mul(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
-# TODO: offset도 따로 고려해야 함, dimension이 같은 지 비교하는게 더 옳아보이는데 일단은 이렇게 놔둠
+# TODO: offset
 @overload
 def _mul(a: ComplexUnit, b: Unit) -> ComplexUnit:
     merged_records = deepcopy(a.records)
@@ -650,14 +702,19 @@ def _mul(a: Unit, b: ComplexUnit) -> ComplexUnit:
 
 @overload
 def _mul(a: Unit, b: Unit) -> ComplexUnit:
-    if _eq(a, b):
-        ret = ComplexUnit(ArithmeticDict({a: 2}))
-    elif _eq(a, b, except_multiplier=True):
-        ret = ComplexUnit(ArithmeticDict({a: 2}))
-        ret.multiplier = b.multiplier / a.multiplier
-    else:
-        ret = ComplexUnit(ArithmeticDict({a: 1, b: 1}))
+    # if _eq(a, b):
+    #     ret = ComplexUnit(ArithmeticDict({a: 2}))
+    # elif _eq(a, b, except_multiplier=True):
+    #     ret = ComplexUnit(ArithmeticDict({a: 2}))
+    #     ret.multiplier = b.multiplier / a.multiplier
+    # else:
+    #     ret = ComplexUnit(ArithmeticDict({a: 1, b: 1}))
 
+    d = ArithmeticDict[Unit]()
+    d[a] += 1
+    d[b] += 1
+
+    ret = ComplexUnit(d)    # multiplier 계산은 생성자에서 자동으로 처리
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -699,48 +756,8 @@ def _mul(a, b):
 
 # %% _div
 @overload
-def _div(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
-    merged_records = deepcopy(a.records)
-    for key, value in b.records.items():
-        merged_records[key] -= value
-
-    ret = ComplexUnit(ArithmeticDict(merged_records))
-    ret.multiplier = a.multiplier / b.multiplier
-    ret.depth = max(a.depth, b.depth) + 1
-    return ret
-
-@overload
-def _div(a: ComplexUnit, b: Unit) -> ComplexUnit:
-    merged_records = deepcopy(a.records)
-    merged_records[b] -= 1
-
-    ret = ComplexUnit(ArithmeticDict(merged_records))
-    ret.multiplier = a.multiplier / b.multiplier
-    ret.depth = max(a.depth, b.depth) + 1
-    return ret
-
-@overload
-def _div(a: Unit, b: ComplexUnit) -> ComplexUnit:
-    merged_records = -b.records
-    merged_records[a] += 1
-
-    ret = ComplexUnit(ArithmeticDict(merged_records))
-    ret.multiplier = a.multiplier / b.multiplier
-    ret.depth = max(a.depth, b.depth) + 1
-    return ret
-
-@overload
-def _div(a: Unit, b: Unit) -> ComplexUnit:
-    if _eq(a, b):
-        ret = ComplexUnit(ArithmeticDict({a: 0}))
-    elif _eq(a, b, except_multiplier=True):
-        ret = ComplexUnit(ArithmeticDict({a: 0}))
-        ret.multiplier = a.multiplier / b.multiplier
-    else:
-        ret = ComplexUnit(ArithmeticDict({a: 1, b: -1}))
-
-    ret.depth = max(a.depth, b.depth) + 1
-    return ret
+def _div(a: ComplexUnit | Unit, b: ComplexUnit | Unit) -> ComplexUnit:
+    return a * b ** -1
 
 @overload
 def _div(a: UnitBase, b: Number) -> Quantity:

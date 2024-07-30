@@ -28,7 +28,8 @@ class Dimension:
                              current=self.current * other, temperature=self.temperature * other,
                              amount=self.amount * other, intensity=self.intensity * other)
         else:
-            return Dimension(length=self.length * other.length, mass=self.mass * other.mass, time=self.time * other.time,
+            return Dimension(length=self.length * other.length, mass=self.mass * other.mass,
+                             time=self.time * other.time,
                              current=self.current * other.current, temperature=self.temperature * other.temperature,
                              amount=self.amount * other.amount, intensity=self.intensity * other.intensity)
 
@@ -41,7 +42,8 @@ class Dimension:
                              current=self.current / other, temperature=self.temperature / other,
                              amount=self.amount / other, intensity=self.intensity / other)
         else:
-            return Dimension(length=self.length / other.length, mass=self.mass / other.mass, time=self.time / other.time,
+            return Dimension(length=self.length / other.length, mass=self.mass / other.mass,
+                             time=self.time / other.time,
                              current=self.current / other.current, temperature=self.temperature / other.temperature,
                              amount=self.amount / other.amount, intensity=self.intensity / other.intensity)
 
@@ -122,8 +124,10 @@ class Dimension:
 
         return f'$\\mathrm{{Dimension\\left[ {formula} \\right]}}$'
 
+dimensionless = Dimension()
+
 class DimensionMismatchError(ValueError):
-    def __init__(self, dim1: Dimension, dim2: Dimension, message: str='Dimension mismatch') -> None:
+    def __init__(self, dim1: Dimension, dim2: Dimension, message: str = 'Dimension mismatch') -> None:
         super().__init__(f"{message}: {dim1} and {dim2}")
 
-__all__ = ['Dimension', 'DimensionMismatchError']
+__all__ = ['Dimension', 'DimensionMismatchError', 'dimensionless']
