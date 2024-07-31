@@ -1,5 +1,5 @@
 import pytest
-from siunits.types import Unit, ComplexUnit, Dimension, DimensionMismatchError, ArithmeticDict
+from siunits.types import Unit, ComplexUnit, Dimension, DimensionError, ArithmeticDict
 
 @pytest.fixture
 def A():
@@ -46,22 +46,22 @@ def test_add_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert A + A == ComplexUnit(ArithmeticDict({A: 1}), multiplier=2)
     assert B + B == ComplexUnit(ArithmeticDict({B: 1}), multiplier=2)
     assert C + C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=2)
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         A + B
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         A + C
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         B + C
 
 def test_add_complex_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert C_A + C_A == ComplexUnit(ArithmeticDict({A: 1}), multiplier=2)
     assert C_B + C_B == ComplexUnit(ArithmeticDict({B: 1}), multiplier=2)
     assert C_C + C_C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=2)
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C_A + C_B
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C_A + C_C
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C_B + C_C
 
     assert C_A + C_A2 == ComplexUnit(ArithmeticDict({A: 1}), multiplier=2)
@@ -74,11 +74,11 @@ def test_add_unit_and_complex(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert C_B + B == ComplexUnit(ArithmeticDict({B: 1}), multiplier=2)
     assert C + C_C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=2)
     assert C_C + C == ComplexUnit(ArithmeticDict({C: 1}), multiplier=2)
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         A + C_B
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         B + C_C
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C + C_A
 
 # Subtraction Tests
@@ -86,22 +86,22 @@ def test_sub_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert A - A == 0
     assert B - B == 0
     assert C - C == 0
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         A - B
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         A - C
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         B - C
 
 def test_sub_complex_units(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert C_A - C_A == 0
     assert C_B - C_B == 0
     assert C_C - C_C == 0
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C_A - C_B
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C_A - C_C
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C_B - C_C
 
     assert C_A - C_A2 == 0
@@ -113,11 +113,11 @@ def test_sub_unit_and_complex(A, B, C, A2, C_A, C_B, C_C, C_A2, C_1, C_2):
     assert C_B - B == 0
     assert C - C_C == 0
     assert C_C - C == 0
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         A - C_B
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         B - C_C
-    with pytest.raises(DimensionMismatchError):
+    with pytest.raises(DimensionError):
         C - C_A
 
 # Multiplication Tests

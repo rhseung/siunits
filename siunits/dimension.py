@@ -126,8 +126,8 @@ class Dimension:
 
 dimensionless = Dimension()
 
-class DimensionMismatchError(ValueError):
+class DimensionError(ValueError):
     def __init__(self, dim1: Dimension, dim2: Dimension, message: str = 'Dimension mismatch') -> None:
         super().__init__(f"{message}: {dim1} and {dim2}")
 
-__all__ = ['Dimension', 'DimensionMismatchError', 'dimensionless']
+__all__ = ['Dimension', 'DimensionError', 'dimensionless']

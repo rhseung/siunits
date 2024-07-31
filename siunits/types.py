@@ -1,3 +1,4 @@
+import re
 from abc import abstractmethod
 from copy import deepcopy
 from typing import TypeVar, overload
@@ -11,19 +12,30 @@ from siunits.utils import (
     ArithmeticDict, product, pretty,
     SMALL_SPACE, MULTIPLY_SIGN, SMALL_SPACE_LATEX, MULTIPLY_SIGN_LATEX
 )
-from siunits.dimension import Dimension, DimensionMismatchError, dimensionless
+from siunits.dimension import Dimension, DimensionError, dimensionless
 
 Number = int | float
 ArrayLike = list[Number] | tuple[Number, ...] | ndarray | range
 
 # %% UnitBase
 
-@define(hash=False, eq=False)
 class UnitBase:
-    dimension: Dimension
-    offset: Number = 0
-    multiplier: Number = 1
-    depth: int = 0
+    def __init__(self, dimension: Dimension, offset: Number = 0, multiplier: Number = 1, depth: int = 0):
+        self.dimension = dimension
+        self.offset = offset
+        self._multiplier = multiplier
+        self.depth = depth
+
+    @property
+    def multiplier(self):
+        return self._multiplier
+
+    @multiplier.setter
+    def multiplier(self, value: Number):
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+
+        self._multiplier = value
 
     def __eq__(self, other):
         return _eq(self, other)
@@ -64,12 +76,30 @@ class UnitBase:
     def __neg__(self):
         return self * -1
 
+    # todo: multiplier에 complex 지원
+    #  - __complex__
+
+    def __repr__(self) -> str:
+        ret = f"<{self.__class__.__name__}[{self.dimension}]>"
+        if self.offset != 0:
+            ret += f" offset={self.offset}"
+        if self.multiplier != 1:
+            ret += f" multiplier={self.multiplier}"
+        return ret
+
+    def __str__(self) -> str:
+        return self.__format__("")
+
+    @abstractmethod
+    def __contains__(self, unit: 'UnitBase') -> bool:
+        pass
+
     @abstractmethod
     def __deepcopy__(self, memo=None):
         pass
 
     @abstractmethod
-    def __str__(self) -> str:
+    def __format__(self, format_spec: str) -> str:
         pass
 
     @abstractmethod
@@ -87,7 +117,7 @@ class UnitBase:
     # test: 테스트 필요
     def to(self, other: 'UnitBase') -> 'UnitBase':
         if self.dimension != other.dimension:
-            raise DimensionMismatchError(self.dimension, other.dimension, "Cannot convert units with different dimensions")
+            raise DimensionError(self.dimension, other.dimension, "Cannot convert units with different dimensions")
 
         ret = deepcopy(other**1)
         ret.multiplier = self.si().multiplier / other.si().multiplier
@@ -116,25 +146,18 @@ class Unit(UnitBase):
         self.symbol = symbol
         self.latex_symbol = symbol if latex_symbol is None else latex_symbol
 
-    def __str__(self) -> str:
-        return self.symbol
-
-    def _repr_latex_(self) -> str:
-        return f'$\\mathrm {{{self.latex_symbol}}}$'
-
-    def __repr__(self) -> str:
-        ret = f"<Unit[{self.dimension}] '{self.symbol}'"
-        if self.offset != 0:
-            ret += f" offset={self.offset}"
-        if self.multiplier != 1:
-            ret += f" multiplier={self.multiplier}"
-        return ret + ">"
-
     def __hash__(self) -> int:  # type: ignore
         if self.multiplier == 0:    # todo: offset, 0K, 0C의 경우처럼 0이여도 다른 경우가 있을 수 있음
             return hash(0)
+        elif self.dimension == dimensionless:
+            return hash(self.multiplier)
         else:
             return hash((self.symbol, self.dimension, self.offset, self.multiplier))
+
+    def __deepcopy__(self, memo=None):
+        if memo is None:
+            memo = {}
+        return Unit(self.symbol, self.dimension, self.offset, self.multiplier, latex_symbol=self.latex_symbol)
 
     def __lt__(self, other) -> bool:
         if not isinstance(other, Unit):
@@ -154,10 +177,25 @@ class Unit(UnitBase):
         else:
             return a < b
 
-    def __deepcopy__(self, memo=None):
-        if memo is None:
-            memo = {}
-        return Unit(self.symbol, self.dimension, self.offset, self.multiplier, latex_symbol=self.latex_symbol)
+    def __contains__(self, unit: UnitBase) -> bool:
+        return self == unit
+
+    def __repr__(self) -> str:
+        ret = f"<{self.__class__.__name__}[{self.dimension}] '{self.symbol}'"
+        if self.offset != 0:
+            ret += f" offset={self.offset}"
+        if self.multiplier != 1:
+            ret += f" multiplier={self.multiplier}"
+        return ret + ">"
+
+    def __format__(self, format_spec: str) -> str:
+        if format_spec == "":
+            return self.symbol
+        else:
+            raise ValueError("Invalid format specification")
+
+    def _repr_latex_(self) -> str:
+        return f'$\\mathrm {{{self.latex_symbol}}}$'
 
     def expand(self):
         return self
@@ -191,9 +229,21 @@ class ComplexUnit(UnitBase):
         # optimize records
         self.records: ArithmeticDict[Unit] = ArithmeticDict[Unit](_records)
 
-    def __str__(self) -> str:
+    # test: 테스트 필요
+    def __format__(self, format_spec: str) -> str:
+        precision: int | None = None
+
+        if format_spec != "":
+            match = re.match(r"^\.(\d+)f$", format_spec)
+
+            if match:
+                precision = int(match.group(1))
+            else:
+                raise ValueError(f"Invalid format specification '{format_spec}'")
+
         front = []
         back = []
+        multiplier_string = pretty(self.multiplier, precision)
 
         for unit, exponent in self.records.items():
             if exponent > 0:
@@ -210,46 +260,47 @@ class ComplexUnit(UnitBase):
         if front and back:
             formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
             if self.multiplier != 1:
-                formula = f"{pretty(self.multiplier)}{SMALL_SPACE}{formula}"
+                formula = f"{multiplier_string}{SMALL_SPACE}{formula}"
         elif front:
             formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}'
             if self.multiplier != 1:
-                formula = f"{pretty(self.multiplier)}{SMALL_SPACE}{formula}"
+                formula = f"{multiplier_string}{SMALL_SPACE}{formula}"
         elif back:
-            formula = f'{pretty(self.multiplier)}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
+            formula = f'{multiplier_string}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
         else:
-            formula = f'{pretty(self.multiplier)}'
+            formula = f'{multiplier_string}'
 
         return formula
 
     def _repr_latex_(self) -> str:
         front = []
         back = []
+        multiplier_string = pretty(self.multiplier, LaTeX=True)
 
         for unit, exponent in self.records.items():
             if exponent > 0:
                 if exponent == 1:
                     front.append(unit.symbol)
                 else:
-                    front.append(f"{unit.symbol}^{pretty(exponent)}")
+                    front.append(f"{unit.symbol}^{{{pretty(exponent)}}}")
             else:
                 if exponent == -1:
                     back.append(unit.symbol)
                 else:
-                    back.append(f"{unit.symbol}^{pretty(-exponent)}")
+                    back.append(f"{unit.symbol}^{{{pretty(-exponent)}}}")
 
         if front and back:
             formula = f'\\dfrac{{{MULTIPLY_SIGN_LATEX.join(front)}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
             if self.multiplier != 1:
-                formula = f'{pretty(self.multiplier)}{SMALL_SPACE_LATEX}{formula}'
+                formula = f'{multiplier_string}{SMALL_SPACE_LATEX}{formula}'
         elif front:
             formula = f'{MULTIPLY_SIGN_LATEX.join(front)}'
             if self.multiplier != 1:
-                formula = f'{pretty(self.multiplier)}{SMALL_SPACE_LATEX}{formula}'
+                formula = f'{multiplier_string}{SMALL_SPACE_LATEX}{formula}'
         elif back:
-            formula = f'\\dfrac{{{pretty(self.multiplier)}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
+            formula = f'\\dfrac{{{multiplier_string}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
         else:
-            formula = f'{pretty(self.multiplier)}'
+            formula = f'{multiplier_string}'
 
         return f'$\\mathrm {{{formula}}}$'
 
@@ -260,6 +311,9 @@ class ComplexUnit(UnitBase):
         if self.multiplier != 1:
             ret += f" multiplier={self.multiplier}"
         return ret + ">"
+
+    def __contains__(self, unit: UnitBase) -> bool:
+        return unit in self.records
 
     def __deepcopy__(self, memo=None):
         if memo is None:
@@ -319,17 +373,12 @@ class FixedUnit(Unit):
     def __init__(self, symbol: str, base: ComplexUnit, offset: Number = 0, multiplier: Number = 1, *, latex_symbol: str | None = None):
         super().__init__(symbol, base.dimension, offset, 1, latex_symbol=latex_symbol)
 
-        base.multiplier *= multiplier
+        base.multiplier *= multiplier   # FixedUnit의 multiplier는 항상 1, base의 multiplier에만 곱해준다.
         self.base = base
-        self.depth = base.depth
+        self.depth = base.depth + 1
 
-    def __repr__(self):
-        ret = f"<FixedUnit[{self.dimension}] '{self.symbol}'"
-        if self.offset != 0:
-            ret += f" offset={self.offset}"
-        if self.multiplier != 1:
-            ret += f" multiplier={self.multiplier}"
-        return ret + ">"
+    def __contains__(self, unit: UnitBase) -> bool:
+        return unit in self.base
 
     def __deepcopy__(self, memo=None):
         if memo is None:
@@ -358,19 +407,17 @@ class Quantity:
         self.unit = unit
         unit.multiplier = 1
 
-    def to_complex_unit(self) -> ComplexUnit:
-        _cp = self.unit ** 1
-        _cp.multiplier = self.value
-        return _cp
-
     def __str__(self) -> str:
-        return f"{self.value} {self.unit}"
-
-    def _repr_latex_(self) -> str:
-        return self.to_complex_unit()._repr_latex_()
+        return self.__format__("")
 
     def __repr__(self) -> str:
         return f"<Quantity {pretty(self.value)} {self.unit}>"
+
+    def __format__(self, format_spec: str) -> str:
+        return self.to_complex_unit().__format__(format_spec)
+
+    def _repr_latex_(self) -> str:
+        return self.to_complex_unit()._repr_latex_()
 
     def __eq__(self, other: 'Quantity | UnitBase | Number') -> bool:    # type: ignore
         return _eq(self, other)
@@ -379,14 +426,14 @@ class Quantity:
     @overload
     def __lt__(self, other: 'Quantity') -> bool:
         if self.unit.dimension != other.unit.dimension:
-            raise DimensionMismatchError(self.unit.dimension, other.unit.dimension, "Cannot compare quantities with different dimensions")
+            raise DimensionError(self.unit.dimension, other.unit.dimension, "Cannot compare quantities with different dimensions")
 
         return self.si().value < other.si().value
 
     @overload
     def __lt__(self, other: UnitBase) -> bool:
         if self.unit.dimension != other.dimension:
-            raise DimensionMismatchError(self.unit.dimension, other.dimension, "Cannot compare quantities with different dimensions")
+            raise DimensionError(self.unit.dimension, other.dimension, "Cannot compare quantities with different dimensions")
 
         # TODO: offset, 0K, 0C는 둘 다 0이지만 0K < 0C이다.
         return self.si().value < other.si().multiplier
@@ -440,10 +487,21 @@ class Quantity:
     def __neg__(self):
         return Quantity(-self.value, self.unit)
 
+    def __abs__(self) -> 'Quantity':
+        return Quantity(abs(self.value), self.unit)
+
+    def __contains__(self, unit: UnitBase) -> bool:
+        return unit in self.unit
+
     def __deepcopy__(self, memo=None):
         if memo is None:
             memo = {}
         return Quantity(self.value, deepcopy(self.unit, memo))
+
+    def to_complex_unit(self) -> ComplexUnit:
+        _cp = self.unit ** 1
+        _cp.multiplier = self.value
+        return _cp
 
     def expand(self):
         _cp = self.to_complex_unit().expand()
@@ -535,21 +593,21 @@ def _eq(a, b, except_multiplier=False):
 @overload
 def _add(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
     if a.depth > b.depth:
         a, b = b, a
     
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict(a.records))
-    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier)
+    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier if a.multiplier != 0 else 1)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
 @overload
 def _add(a: ComplexUnit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
     # TODO: offset
     a_, b_ = a.si(), b.si()
@@ -561,19 +619,19 @@ def _add(a: ComplexUnit, b: Unit) -> ComplexUnit:
 @overload
 def _add(a: Unit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
     # TODO: offset
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier)   # TEST 필요
+    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier if a.multiplier != 0 else 1)   # TEST 필요
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
 @overload
 def _add(a: Unit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot add units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot add units with different dimensions")
 
     # TODO: offset
     if a.depth > b.depth:
@@ -581,7 +639,7 @@ def _add(a: Unit, b: Unit) -> ComplexUnit:
     
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier)
+    ret.multiplier = (a_.multiplier + b_.multiplier) / (a_.multiplier / a.multiplier if a.multiplier != 0 else 1)   # TEST 필요
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -592,6 +650,13 @@ def _add(a: Quantity, b: Quantity) -> Quantity:
 @overload
 def _add(a: Quantity, b: UnitBase) -> Quantity:
     return Quantity(1, _add(a.to_complex_unit(), b))
+
+@overload
+def _add(a: Quantity, b: Number) -> Quantity:
+    if b == 0:
+        return a
+    else:
+        return NotImplemented
 
 @overload
 def _add(a, b):
@@ -605,49 +670,59 @@ def _add(a, b):
 @overload
 def _sub(a: ComplexUnit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
+    swap = False
     if a.depth > b.depth:
         a, b = b, a
+        swap = True
 
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict(a.records))
-    ret.multiplier = (a_.multiplier - b_.multiplier) / (a_.multiplier / a.multiplier)
+    ret.multiplier = (a_.multiplier - b_.multiplier) / (a_.multiplier / a.multiplier if a.multiplier != 0 else 1)
+    if swap:
+        ret.multiplier *= -1
+
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
 @overload
 def _sub(a: ComplexUnit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({b: 1}))
-    ret.multiplier = (a_.multiplier - b_.multiplier) / (b_.multiplier / b.multiplier)
+    ret.multiplier = (a_.multiplier - b_.multiplier) / (b_.multiplier / b.multiplier if b.multiplier != 0 else 1)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
 @overload
 def _sub(a: Unit, b: ComplexUnit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
     a_, b_ = a.si(), b.si()
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = (a_.multiplier - b_.multiplier) / (a_.multiplier / a.multiplier)
+    ret.multiplier = (a_.multiplier - b_.multiplier) / (a_.multiplier / a.multiplier if a.multiplier != 0 else 1)
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
 @overload
 def _sub(a: Unit, b: Unit) -> ComplexUnit:
     if a.dimension != b.dimension:
-        raise DimensionMismatchError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
+        raise DimensionError(a.dimension, b.dimension, "Cannot subtract units with different dimensions")
 
+    swap = False
     if a.depth > b.depth:
         a, b = b, a
+        swap = True
 
     ret = ComplexUnit(ArithmeticDict({a: 1}))
-    ret.multiplier = (a.multiplier - b.multiplier) / (a.multiplier / b.multiplier)
+    ret.multiplier = (a.multiplier - b.multiplier) / (a.multiplier / b.multiplier if b.multiplier != 0 else 1)
+    if swap:
+        ret.multiplier *= -1
+
     ret.depth = max(a.depth, b.depth) + 1
     return ret
 
@@ -658,6 +733,13 @@ def _sub(a: Quantity, b: Quantity) -> Quantity:
 @overload
 def _sub(a: Quantity, b: UnitBase) -> Quantity:
     return Quantity(1, _sub(a.to_complex_unit(), b))
+
+@overload
+def _sub(a: Quantity, b: Number) -> Quantity:
+    if b == 0:
+        return a
+    else:
+        return NotImplemented
 
 @overload
 def _sub(a, b):
@@ -727,12 +809,18 @@ def _mul(a: Number, b: UnitBase) -> Quantity:
     return Quantity(a, b)
 
 @overload
-def _mul(a: UnitBase, b: ArrayLike) -> ndarray:
-    return array(b) * a
+def _mul(a: UnitBase, b: ArrayLike) -> list[Quantity] | ndarray:
+    if isinstance(b, ndarray):
+        return array(b) * a
+    else:
+        return [i * a for i in b]
 
 @overload
-def _mul(a: ArrayLike, b: UnitBase) -> ndarray:
-    return array(a) * b
+def _mul(a: ArrayLike, b: UnitBase) -> list[Quantity] | ndarray:
+    if isinstance(a, ndarray):
+        return array(a) * b
+    else:
+        return [i * b for i in a]
 
 @overload
 def _mul(a: Quantity, b: Quantity) -> Quantity:
@@ -768,12 +856,11 @@ def _div(a: Number, b: UnitBase) -> Quantity:
     return Quantity(a, b ** -1)
 
 @overload
-def _div(a: UnitBase, b: ArrayLike) -> ndarray:
-    return array(b) / a
-
-@overload
-def _div(a: ArrayLike, b: UnitBase) -> ndarray:
-    return array(a) / b
+def _div(a: ArrayLike, b: UnitBase) -> list[Quantity] | ndarray:
+    if isinstance(a, ndarray):
+        return array(a) / b
+    else:
+        return [i / b for i in a]
 
 @overload
 def _div(a: Quantity, b: Quantity) -> Quantity:

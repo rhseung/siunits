@@ -33,8 +33,36 @@ superscripts = {
 }
 
 # @dispatch(int, int)
-def pretty(n: int | float) -> str:
-    return f"{n:.0f}" if float(n).is_integer() else f"{n}"
+def pretty(n: int | float, precision: int | None = None, LaTeX: bool = False) -> str:
+    if isinstance(n, float) and n.is_integer():
+        n = int(n)
+
+    if abs(n) >= 1e8:
+        if precision is not None:
+            ret = f"{n:.{precision}e}"
+        else:
+            ret = f"{n:e}"
+
+        i = ret.index('e')
+        ret = ret[:i].rstrip('0') + ret[i:]
+    elif isinstance(n, int):
+        ret = f"{n}"
+    else:   # elif isinstance(n, float):
+        if precision is not None:
+            ret = f"{n:.{precision}f}"
+        else:
+            ret = f"{n}"
+
+    if 'e' in ret and LaTeX:
+        i = ret.index('e')
+        exp = ret[i + 1:]
+
+        if exp.startswith('+'):
+            ret = ret[:i] + r' \times 10^{' + exp[1:].lstrip('0') + '}'
+        else:   # exp.startswith('-')
+            ret = ret[:i] + r' \times 10^{-' + exp[1:].lstrip('0') + '}'
+
+    return ret
 
 # @dispatch(str, (int, float), (int, float))
 # def pretty(s: str, sub: int | float = None, sup: int | float = None) -> str:

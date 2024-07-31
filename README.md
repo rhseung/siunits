@@ -35,10 +35,10 @@ mass = 5 * kg
 
 print(mass * gravity) # 출력 결과: 49.05 kg ⋅ m / s^2
 print((mass * gravity).to(N)) # 출력 결과: 49.05 N
-print((mass * gravity).to(ohm)) # 출력 결과: DimensionMismatchError
+print((mass * gravity).to(ohm)) # 출력 결과: DimensionError
 ```
 
-`to` 메소드를 사용하여 단위를 변환할 수 있습니다. 차원이 일치하지 않으면 `DimensionMismatchError`가 발생합니다.
+`to` 메소드를 사용하여 단위를 변환할 수 있습니다. 차원이 일치하지 않으면 `DimensionError`가 발생합니다.
 
 ```python
 print(atm, atm.expand()) # 출력 결과: atm, 101325 Pa
