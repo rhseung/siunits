@@ -69,20 +69,20 @@ print(ohm.si())  # 출력 결과: kg ⋅ m^2 / A^2 ⋅ s^3
 
 ```python
 print([1, 2, 3] * m)
-# 출력 결과: array([<Quantity 1 m> <Quantity 2 m> <Quantity 3 m>])
+# 출력 결과: [<Quantity 1 m>, <Quantity 2 m>, <Quantity 3 m>]
 
 print((1.1, 1.2, 1.3) * m / s)
-# 출력 결과: array([<Quantity 1.1 m / s> <Quantity 1.2 m / s> <Quantity 1.3 m / s>])
+# 출력 결과: [<Quantity 1.1 m/s>, <Quantity 1.2 m/s>, <Quantity 1.3 m/s>]
 
 print(range(1, 7, 2) * T)
-# 출력 결과: array([<Quantity 1 T> <Quantity 3 T> <Quantity 5 T>])
+# 출력 결과: [<Quantity 1 T>, <Quantity 3 T>, <Quantity 5 T>]
 
 import numpy as np
 print(np.arange(1, 5) * N)
 # 출력 결과: array([<Quantity 1 N> <Quantity 2 N> <Quantity 3 N> <Quantity 4 N>])
 ```
 
-`list[int | float]`, `tuple[int | float]`, `range`, `numpy.ndarray` 등의 자료형과 단위를 곱할 경우 `numpy.ndarray` 형의 객체가 반환됩니다.
+`list[int | float]`, `tuple[int | float]`, `range` 등의 객체를 곱하면 `list[UnitBase]` 형의 객체가 반환됩니다. `numpy.ndarray` 형의 객체를 곱할 경우 `numpy.ndarray` 형의 객체가 반환됩니다.
 
 > ```python
 > (3*kg)**2 / (2*m)**3

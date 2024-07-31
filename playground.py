@@ -21,3 +21,5 @@ print((0*A) * (3*A))
 print(3*A - 3*A + 3*A)
 print(0*A + 3*A)
 print(0 + 3*A)
+
+print([1, 2, 3] * m)
