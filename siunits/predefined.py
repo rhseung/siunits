@@ -11,18 +11,26 @@ m = Unit('m', Dimension(length=1))
 cm = FixedUnit('cm', m**1, multiplier=1e-2)
 mm = FixedUnit('mm', m**1, multiplier=1e-3)
 
+# second
 s = Unit('s', Dimension(time=1))
-
-A = Unit('A', Dimension(current=1))
-
-K = Unit('K', Dimension(temperature=1))
-
-mol = Unit('mol', Dimension(amount=1))
-
-cd = Unit('cd', Dimension(intensity=1))
-
 minute = FixedUnit('min', s**1, multiplier=60)
 h = FixedUnit('h', s**1, multiplier=3600)
+
+# ampere
+A = Unit('A', Dimension(current=1))
+
+# kelvin
+K = Unit('K', Dimension(temperature=1))
+
+# mole
+mol = Unit('mol', Dimension(amount=1))
+
+# candela
+cd = Unit('cd', Dimension(intensity=1))
+
+# dimensionless
+one = Unit('1', Dimension())
+
 N = FixedUnit('N', kg * m / s**2)
 Pa = FixedUnit('Pa', N / m**2)
 atm = FixedUnit('atm', Pa**1, multiplier=101325)

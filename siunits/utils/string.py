@@ -6,7 +6,7 @@ MULTIPLY_SIGN = "\u22C5"
 SMALL_SPACE_LATEX = r' \, '
 MULTIPLY_SIGN_LATEX = r' \cdot '
 
-subscripts = {
+_subscripts = {
     '0': "\u2080",
     '1': "\u2081",
     '2': "\u2082",
@@ -19,7 +19,7 @@ subscripts = {
     '9': "\u2089"
 }
 
-superscripts = {
+_superscripts = {
     '0': "\u2070",
     '1': "\u00B9",
     '2': "\u00B2",
@@ -29,7 +29,9 @@ superscripts = {
     '6': "\u2076",
     '7': "\u2077",
     '8': "\u2078",
-    '9': "\u2079"
+    '9': "\u2079",
+    '/': "⸍",
+    '-': "⁻"
 }
 
 # @dispatch(int, int)
@@ -50,6 +52,8 @@ def pretty(n: int | float, precision: int | None = None, LaTeX: bool = False) ->
     else:   # elif isinstance(n, float):
         if precision is not None:
             ret = f"{n:.{precision}f}"
+            if ret[ret.index('.') + 1:] == '0' * precision:
+                ret = f"{n:.{precision}e}"
         else:
             ret = f"{n}"
 
@@ -63,6 +67,14 @@ def pretty(n: int | float, precision: int | None = None, LaTeX: bool = False) ->
             ret = ret[:i] + r' \times 10^{-' + exp[1:].lstrip('0') + '}'
 
     return ret
+
+def superscript(n: int | float | str | Fraction) -> str:
+    if isinstance(n, int | str):
+        n = str(n)
+        return ''.join(_superscripts[d] for d in n)
+    elif isinstance(n, float | Fraction):
+        n = Fraction(str(n))
+        return superscript(n.numerator) + _superscripts['/'] + superscript(n.denominator)
 
 # @dispatch(str, (int, float), (int, float))
 # def pretty(s: str, sub: int | float = None, sup: int | float = None) -> str:
@@ -84,6 +96,5 @@ def pretty(n: int | float, precision: int | None = None, LaTeX: bool = False) ->
 #
 #     return f"{s}{subtext}{supertext}"
 #
-# if __name__ == '__main__':
-#     print(pretty('a', 178, 23))
-#     print(pretty('a', 1.5, 2.5))
+if __name__ == '__main__':
+    print(superscript(-0.1))

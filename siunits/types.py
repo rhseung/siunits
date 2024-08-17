@@ -1,21 +1,26 @@
 import re
 from abc import abstractmethod
 from copy import deepcopy
-from typing import TypeVar, overload
+from typing import TypeVar, Any, Self, Literal, TypeAlias, Union, overload
 from functools import total_ordering
+from fractions import Fraction
+from decimal import Decimal
+from copy import deepcopy
 
+import numpy as np
+from numpy.typing import NDArray
 from plum import dispatch
-from attrs import define
-from numpy import ndarray, array
 
+from siunits.dimension import Dimension, DimensionError, dimensionless
 from siunits.utils import (
-    ArithmeticDict, product, pretty,
+    ArithmeticDict, product, pretty, superscript,
     SMALL_SPACE, MULTIPLY_SIGN, SMALL_SPACE_LATEX, MULTIPLY_SIGN_LATEX
 )
-from siunits.dimension import Dimension, DimensionError, dimensionless
 
-Number = int | float
-ArrayLike = list[Number] | tuple[Number, ...] | ndarray | range
+PyNumber: TypeAlias = Union[int, float]
+Number: TypeAlias = Union[Decimal, Fraction, PyNumber, np.number]
+ArrayLike: TypeAlias = Union[list[Number], tuple[Number, ...], np.ndarray]
+QuantityLike: TypeAlias = Union['Quantity', 'UnitBase']
 
 # %% UnitBase
 
@@ -234,7 +239,7 @@ class ComplexUnit(UnitBase):
         precision: int | None = None
 
         if format_spec != "":
-            match = re.match(r"^\.(\d+)f$", format_spec)
+            match = re.match(r"^\.(\d+)(?:f|e)$", format_spec)
 
             if match:
                 precision = int(match.group(1))
@@ -395,125 +400,448 @@ class FixedUnit(Unit):
 
 # %% Quantity
 
-@total_ordering
-class Quantity:
-    def __init__(self, value: Number, unit: U):
-        """
-        :param value: Number
-        :param unit: bound of UnitBase
-        """
+# @total_ordering
+# class Quantity:
+#     def __init__(self, value: Number, unit: U):
+#         """
+#         :param value: Number
+#         :param unit: bound of UnitBase
+#         """
 
-        self.value = value * unit.multiplier
-        self.unit = unit
+#         self.value = value * unit.multiplier
+#         self.unit = unit
+#         unit.multiplier = 1
+
+#     def __str__(self) -> str:
+#         return self.__format__("")
+
+#     def __repr__(self) -> str:
+#         return f"<Quantity {pretty(self.value)} {self.unit}>"
+
+#     def __format__(self, format_spec: str) -> str:
+#         return self.to_complex_unit().__format__(format_spec)
+
+#     def _repr_latex_(self) -> str:
+#         return self.to_complex_unit()._repr_latex_()
+
+#     def __eq__(self, other: 'Quantity | UnitBase | Number') -> bool:    # type: ignore
+#         return _eq(self, other)
+
+#     # TEST: __lt__ 테스트
+#     @overload
+#     def __lt__(self, other: 'Quantity') -> bool:
+#         if self.unit.dimension != other.unit.dimension:
+#             raise DimensionError(self.unit.dimension, other.unit.dimension, "Cannot compare quantities with different dimensions")
+
+#         return self.si().value < other.si().value
+
+#     @overload
+#     def __lt__(self, other: UnitBase) -> bool:
+#         if self.unit.dimension != other.dimension:
+#             raise DimensionError(self.unit.dimension, other.dimension, "Cannot compare quantities with different dimensions")
+
+#         # TODO: offset, 0K, 0C는 둘 다 0이지만 0K < 0C이다.
+#         return self.si().value < other.si().multiplier
+
+#     @overload
+#     def __lt__(self, other: Number) -> bool:
+#         if other == 0:
+#             # TEST: -A를 fix한 B라는 unit이 있으면 단순 multipler 비교만으로는 비교할 수 없다.
+#             return self.si().value < 0
+#         else:
+#             return NotImplemented
+
+#     @overload
+#     def __lt__(self, other) -> bool:
+#         return NotImplemented
+
+#     @dispatch
+#     def __lt__(self, other):
+#         pass
+
+#     def __add__(self, other: 'Quantity | UnitBase'):
+#         return _add(self, other)
+
+#     def __radd__(self, other: 'Quantity | UnitBase'):
+#         return self.__add__(other)
+
+#     def __sub__(self, other: 'Quantity | UnitBase'):
+#         return _sub(self, other)
+
+#     def __rsub__(self, other: 'Quantity | UnitBase'):
+#         return -self.__sub__(other)
+
+#     def __mul__(self, other: 'Quantity | UnitBase | Number'):
+#         return _mul(self, other)
+
+#     def __rmul__(self, other: 'Quantity | UnitBase | Number'):
+#         return self.__mul__(other)
+
+#     def __truediv__(self, other: 'Quantity | UnitBase | Number'):
+#         return _div(self, other)
+
+#     def __rtruediv__(self, other: 'Quantity | UnitBase | Number'):
+#         return self.__truediv__(other) ** -1
+
+#     def __pow__(self, exponent: Number):
+#         return _pow(self, exponent)
+
+#     def __pos__(self):
+#         return self
+
+#     def __neg__(self):
+#         return Quantity(-self.value, self.unit)
+
+#     def __abs__(self) -> 'Quantity':
+#         return Quantity(abs(self.value), self.unit)
+
+#     def __contains__(self, unit: UnitBase) -> bool:
+#         return unit in self.unit
+
+#     def __deepcopy__(self, memo=None):
+#         if memo is None:
+#             memo = {}
+#         return Quantity(self.value, deepcopy(self.unit, memo))
+
+#     def to_complex_unit(self) -> ComplexUnit:
+#         _cp = self.unit ** 1
+#         _cp.multiplier = self.value
+#         return _cp
+
+#     def expand(self):
+#         _cp = self.to_complex_unit().expand()
+#         return Quantity(1, _cp)
+
+#     def si(self):
+#         _cp = self.to_complex_unit().si()
+#         return Quantity(1, _cp)
+
+#     def to(self, other: 'UnitBase | Quantity') -> 'Quantity':
+#         _cp = self.to_complex_unit().to(other.to_complex_unit() if isinstance(other, Quantity) else other)
+#         return Quantity(1, _cp)
+
+@total_ordering
+class Quantity(np.ndarray):
+    # create instance
+    def __new__(cls: type['Quantity'], value: ArrayLike | Number, unit: UnitBase) -> 'Quantity':
+        _multiplier = unit.multiplier
         unit.multiplier = 1
 
-    def __str__(self) -> str:
-        return self.__format__("")
+        obj = (np.asarray(value) * _multiplier).view(cls)
+        obj._unit = unit
 
-    def __repr__(self) -> str:
-        return f"<Quantity {pretty(self.value)} {self.unit}>"
+        return obj
+    def __array_finalize__(self, obj: NDArray[Any] | None) -> None:
+        if obj is None:
+            return
 
-    def __format__(self, format_spec: str) -> str:
-        return self.to_complex_unit().__format__(format_spec)
+        _unit = getattr(obj, "_unit", None)
+        if _unit is not None:
+            self._unit = _unit
 
-    def _repr_latex_(self) -> str:
-        return self.to_complex_unit()._repr_latex_()
+    # properties
+    @property
+    def unit(self) -> UnitBase:
+        return self._unit
+    @unit.setter
+    def unit(self, unit: UnitBase) -> None:
+        if not self.unit.dimension == unit.dimension:
+            raise DimensionError(self.unit.dimension, unit.dimension, "Cannot change unit to different dimension")
 
-    def __eq__(self, other: 'Quantity | UnitBase | Number') -> bool:    # type: ignore
-        return _eq(self, other)
+        self._unit = unit
+    @property
+    def value(self) -> NDArray[Any]:
+        return self.view(np.ndarray)
+    @value.setter
+    def value(self, value: ArrayLike) -> None:
+        self[...] = value
 
-    # TEST: __lt__ 테스트
-    @overload
-    def __lt__(self, other: 'Quantity') -> bool:
-        if self.unit.dimension != other.unit.dimension:
-            raise DimensionError(self.unit.dimension, other.unit.dimension, "Cannot compare quantities with different dimensions")
-
-        return self.si().value < other.si().value
-
-    @overload
-    def __lt__(self, other: UnitBase) -> bool:
-        if self.unit.dimension != other.dimension:
-            raise DimensionError(self.unit.dimension, other.dimension, "Cannot compare quantities with different dimensions")
-
-        # TODO: offset, 0K, 0C는 둘 다 0이지만 0K < 0C이다.
-        return self.si().value < other.si().multiplier
-
-    @overload
-    def __lt__(self, other: Number) -> bool:
-        if other == 0:
-            # TEST: -A를 fix한 B라는 unit이 있으면 단순 multipler 비교만으로는 비교할 수 없다.
-            return self.si().value < 0
-        else:
-            return NotImplemented
-
-    @overload
-    def __lt__(self, other) -> bool:
-        return NotImplemented
-
-    @dispatch
-    def __lt__(self, other):
-        pass
-
-    def __add__(self, other: 'Quantity | UnitBase'):
-        return _add(self, other)
-
-    def __radd__(self, other: 'Quantity | UnitBase'):
-        return self.__add__(other)
-
-    def __sub__(self, other: 'Quantity | UnitBase'):
-        return _sub(self, other)
-
-    def __rsub__(self, other: 'Quantity | UnitBase'):
-        return -self.__sub__(other)
-
-    def __mul__(self, other: 'Quantity | UnitBase | Number'):
-        return _mul(self, other)
-
-    def __rmul__(self, other: 'Quantity | UnitBase | Number'):
-        return self.__mul__(other)
-
-    def __truediv__(self, other: 'Quantity | UnitBase | Number'):
-        return _div(self, other)
-
-    def __rtruediv__(self, other: 'Quantity | UnitBase | Number'):
-        return self.__truediv__(other) ** -1
-
-    def __pow__(self, exponent: Number):
-        return _pow(self, exponent)
-
-    def __pos__(self):
-        return self
-
-    def __neg__(self):
-        return Quantity(-self.value, self.unit)
-
-    def __abs__(self) -> 'Quantity':
-        return Quantity(abs(self.value), self.unit)
-
-    def __contains__(self, unit: UnitBase) -> bool:
-        return unit in self.unit
-
-    def __deepcopy__(self, memo=None):
-        if memo is None:
-            memo = {}
-        return Quantity(self.value, deepcopy(self.unit, memo))
-
-    def to_complex_unit(self) -> ComplexUnit:
+    # private methods
+    def _to_complex_unit(self) -> ComplexUnit:
         _cp = self.unit ** 1
         _cp.multiplier = self.value
         return _cp
+    def _repr_latex_(self) -> str:
+        return self.to_string(fmt="latex")
 
-    def expand(self):
-        _cp = self.to_complex_unit().expand()
-        return Quantity(1, _cp)
+    # public methods
+    def to_numpy(self) -> NDArray[Any]:
+        return self.value * self.unit
+    
+    @classmethod
+    def from_numpy(cls, array: NDArray[Any]) -> 'Quantity':
+        if len(array.shape) == 0:
+            if isinstance(array.item(), UnitBase):
+                return Quantity(1, array.item())
+            else:
+                return Quantity(1, Unit('1', dimensionless))
+                
+        if len(array) == 0:
+            raise ValueError("Cannot create Quantity from empty array")
+        
+        # [1m, 2m, 3m] -> [1, 2, 3] m
+        if isinstance(array[0], Quantity):
+            return Quantity([x.value for x in array], array[0].unit)
+        
+        raise TypeError(f"Cannot create Quantity from {array}")
+    
+    @overload
+    def to_string(self, *, fmt: Literal['latex'], precision: int | None = None) -> str:
+        _cp = self._to_complex_unit()
 
-    def si(self):
-        _cp = self.to_complex_unit().si()
-        return Quantity(1, _cp)
+        front = []
+        back = []
+        multiplier_string = pretty(_cp.multiplier, LaTeX=True, precision=precision)
 
-    def to(self, other: 'UnitBase | Quantity') -> 'Quantity':
-        _cp = self.to_complex_unit().to(other.to_complex_unit() if isinstance(other, Quantity) else other)
+        for unit, exponent in _cp.records.items():
+            if exponent > 0:
+                if exponent == 1:
+                    front.append(unit.symbol)
+                else:
+                    front.append(f"{unit.symbol}^{{{pretty(exponent)}}}")
+            else:
+                if exponent == -1:
+                    back.append(unit.symbol)
+                else:
+                    back.append(f"{unit.symbol}^{{{pretty(-exponent)}}}")
+
+        if front and back:
+            formula = f'\\dfrac{{{MULTIPLY_SIGN_LATEX.join(front)}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
+            if _cp.multiplier != 1:
+                formula = f'{multiplier_string}{SMALL_SPACE_LATEX}{formula}'
+        elif front:
+            formula = f'{MULTIPLY_SIGN_LATEX.join(front)}'
+            if _cp.multiplier != 1:
+                formula = f'{multiplier_string}{SMALL_SPACE_LATEX}{formula}'
+        elif back:
+            formula = f'\\dfrac{{{multiplier_string}}}{{{MULTIPLY_SIGN_LATEX.join(back)}}}'
+        else:
+            formula = f'{multiplier_string}'
+
+        return f'$\\mathrm {{{formula}}}$'
+    @overload
+    def to_string(self, *, fmt: Literal['unicode'], precision: int | None = None) -> str:
+        _cp = self._to_complex_unit()
+
+        front = []
+        back = []
+        multiplier_string = pretty(_cp.multiplier, precision)
+
+        for unit, exponent in _cp.records.items():
+            if exponent > 0:
+                if exponent == 1:
+                    front.append(unit.symbol)
+                else:
+                    front.append(f"{unit.symbol}{superscript(exponent)}")
+            else:
+                if exponent == -1:
+                    back.append(unit.symbol)
+                else:
+                    back.append(f"{unit.symbol}{superscript(-exponent)}")
+
+        if front and back:
+            formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
+            if _cp.multiplier != 1:
+                formula = f"{multiplier_string}{SMALL_SPACE}{formula}"
+        elif front:
+            formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}'
+            if _cp.multiplier != 1:
+                formula = f"{multiplier_string}{SMALL_SPACE}{formula}"
+        elif back:
+            formula = f'{multiplier_string}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
+        else:
+            formula = f'{multiplier_string}'
+
+        return formula
+    @overload
+    def to_string(self, *, fmt: None = None, precision: int | None = None) -> str:
+        _cp = self._to_complex_unit()
+
+        front = []
+        back = []
+        multiplier_string = pretty(_cp.multiplier, precision)
+
+        for unit, exponent in _cp.records.items():
+            if exponent > 0:
+                if exponent == 1:
+                    front.append(unit.symbol)
+                else:
+                    front.append(f"{unit.symbol}^{pretty(exponent)}")
+            else:
+                if exponent == -1:
+                    back.append(unit.symbol)
+                else:
+                    back.append(f"{unit.symbol}^{pretty(-exponent)}")
+
+        if front and back:
+            formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
+            if _cp.multiplier != 1:
+                formula = f"{multiplier_string}{SMALL_SPACE}{formula}"
+        elif front:
+            formula = f'{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(front)}'
+            if _cp.multiplier != 1:
+                formula = f"{multiplier_string}{SMALL_SPACE}{formula}"
+        elif back:
+            formula = f'{multiplier_string}{SMALL_SPACE}/{SMALL_SPACE}{(SMALL_SPACE + MULTIPLY_SIGN + SMALL_SPACE).join(back)}'
+        else:
+            formula = f'{multiplier_string}'
+
+        return formula
+    @dispatch
+    def to_string(self, *, fmt, precision):
+        return NotImplemented
+    
+    def decompose(self) -> 'Quantity':
+        _cp = self._to_complex_unit().expand()
         return Quantity(1, _cp)
+    def compose(self) -> list['Quantity']:
+        # TODO: implement
+        return []
+    def si(self) -> 'Quantity':
+        _cp = self._to_complex_unit().si()
+        return Quantity(1, _cp)
+    
+    @overload
+    def to(self, unit: UnitBase) -> 'Quantity':
+        if self.unit.dimension != unit.dimension:
+            raise DimensionError(self.unit.dimension, unit.dimension, "Cannot convert between different dimensions")
+
+        return Quantity(1, self._to_complex_unit().to(unit))
+    @overload
+    def to(self, unit: 'Quantity') -> 'Quantity':
+        if self.unit.dimension != unit.unit.dimension:
+            raise DimensionError(self.unit.dimension, unit.unit.dimension, "Cannot convert between different dimensions")
+
+        return Quantity(1, self._to_complex_unit().to(unit._to_complex_unit()))
+    @dispatch
+    def to(self, unit):
+        return NotImplemented
+
+    # magic methods
+    def __str__(self) -> str:
+        return self.to_string()
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.value} {self.unit}>"
+    def __format__(self, format_spec: str) -> str:
+        if format_spec == "":
+            return self.to_string()
+        elif format_spec == 'latex':
+            return self.to_string(format='latex')
+        elif format_spec == 'unicode':
+            return self.to_string(format='unicode')
+        else:
+            return f"{format(self.value, format_spec)} {self.unit}"
+    def __deepcopy__(self, memodict=None):
+        if memodict is None:
+            memodict = {}
+        return Quantity(deepcopy(self.value), deepcopy(self.unit))
+    def __contains__(self, item):
+        return NotImplemented
+
+    # conversion operators
+    @overload
+    def __lshift__(self, other: UnitBase) -> 'Quantity':
+        return self.to(other)
+    @overload
+    def __lshift__(self, other: 'Quantity') -> 'Quantity':
+        return self.to(other._to_complex_unit())
+    @dispatch
+    def __lshift__(self, other):
+        return NotImplemented
+    
+    def __rshift__(self, other):
+        return NotImplemented
+
+    # unary operators
+    def __pos__(self) -> Self:
+        return self
+    def __neg__(self) -> 'Quantity':
+        return Quantity(-self.value, self.unit)
+    def __abs__(self) -> 'Quantity':
+        return Quantity(abs(self.value), self.unit)
+
+    # arithmetic operators
+    def __eq__(self, other: QuantityLike) -> NDArray[np.bool]:
+        other <<= self
+        return self.value.__eq__(other.value)
+    def __lt__(self, other: QuantityLike) -> NDArray[np.bool]:
+        other <<= self
+        return self.value.__lt__(other.value)
+    
+    def __radd__(self, other) -> 'Quantity':
+        return self.__add__(other)
+    def __rsub__(self, other) -> 'Quantity':
+        return -self.__sub__(other)
+    def __rmul__(self, other) -> 'Quantity':
+        return self.__mul__(other)
+    def __rtruediv__(self, other) -> 'Quantity':
+        return self.__truediv__(other) ** -1
+    
+    @overload
+    def __add__(self, other: 'Quantity') -> 'Quantity':
+        if self.ndim != 0:
+            # [1, 2, 3] m + [2, 3, 4] m -> [1m, 2m, 3m] + [2m, 3m, 4m]
+            return Quantity.from_numpy(self.to_numpy() + other.to_numpy())
+        else:
+            return _add(self, other)
+    @overload
+    def __add__(self, other: Any) -> 'Quantity':
+        if self.ndim != 0:
+            # [1, 2, 3] m + kg -> [1m, 2m, 3m] + kg
+            return Quantity.from_numpy(self.to_numpy() + other)
+        else:
+            return _add(self, other)
+    @dispatch
+    def __add__(self, other):
+        pass
+    
+    @overload
+    def __sub__(self, other: 'Quantity') -> 'Quantity':
+        if self.ndim != 0:
+            return Quantity.from_numpy(self.to_numpy() - other.to_numpy())
+        else:
+            return _sub(self, other)
+    @overload
+    def __sub__(self, other: Any) -> 'Quantity':
+        if self.ndim != 0:
+            return Quantity.from_numpy(self.to_numpy() - other)
+        else:
+            return _sub(self, other)
+    @dispatch
+    def __sub__(self, other):
+        pass
+    
+    @overload
+    def __mul__(self, other: 'Quantity') -> 'Quantity':
+        if self.ndim != 0:
+            return Quantity.from_numpy(self.to_numpy() * other.to_numpy())
+        else:
+            return _mul(self, other)
+    @overload
+    def __mul__(self, other: Any) -> 'Quantity':
+        if self.ndim != 0:
+            return Quantity.from_numpy(self.to_numpy() * other)
+        else:
+            return _mul(self, other)
+    @dispatch
+    def __mul__(self, other):
+        pass
+    
+    @overload
+    def __truediv__(self, other: 'Quantity') -> 'Quantity':
+        if self.ndim != 0:
+            return Quantity.from_numpy(self.to_numpy() / other.to_numpy())
+        else:
+            return _div(self, other)    
+    @overload
+    def __truediv__(self, other: Any) -> 'Quantity':
+        if self.ndim != 0:
+            return Quantity.from_numpy(self.to_numpy() / other)
+        else:
+            return _div(self, other)
+    @dispatch
+    def __truediv__(self, other):
+        pass
 
 # %% _eq
 @overload
@@ -801,26 +1129,26 @@ def _mul(a: Unit, b: Unit) -> ComplexUnit:
     return ret
 
 @overload
-def _mul(a: UnitBase, b: Number) -> Quantity:
+def _mul(a: UnitBase, b: ArrayLike | Number) -> Quantity:
     return Quantity(b, a)
 
 @overload
-def _mul(a: Number, b: UnitBase) -> Quantity:
+def _mul(a: ArrayLike | Number, b: UnitBase) -> Quantity:
     return Quantity(a, b)
 
-@overload
-def _mul(a: UnitBase, b: ArrayLike) -> list[Quantity] | ndarray:
-    if isinstance(b, ndarray):
-        return array(b) * a
-    else:
-        return [i * a for i in b]
+# @overload
+# def _mul(a: UnitBase, b: ArrayLike) -> list[Quantity] | np.ndarray:
+#     if isinstance(b, np.ndarray):
+#         return np.array(b) * a
+#     else:
+#         return [i * a for i in b]
 
-@overload
-def _mul(a: ArrayLike, b: UnitBase) -> list[Quantity] | ndarray:
-    if isinstance(a, ndarray):
-        return array(a) * b
-    else:
-        return [i * b for i in a]
+# @overload
+# def _mul(a: ArrayLike, b: UnitBase) -> list[Quantity] | np.ndarray:
+#     if isinstance(a, np.ndarray):
+#         return np.array(a) * b
+#     else:
+#         return [i * b for i in a]
 
 @overload
 def _mul(a: Quantity, b: Quantity) -> Quantity:
@@ -848,19 +1176,19 @@ def _div(a: ComplexUnit | Unit, b: ComplexUnit | Unit) -> ComplexUnit:
     return a * b ** -1
 
 @overload
-def _div(a: UnitBase, b: Number) -> Quantity:
+def _div(a: UnitBase, b: ArrayLike | Number) -> Quantity:
     return Quantity(1 / b, a)
 
 @overload
-def _div(a: Number, b: UnitBase) -> Quantity:
+def _div(a: ArrayLike | Number, b: UnitBase) -> Quantity:
     return Quantity(a, b ** -1)
 
-@overload
-def _div(a: ArrayLike, b: UnitBase) -> list[Quantity] | ndarray:
-    if isinstance(a, ndarray):
-        return array(a) / b
-    else:
-        return [i / b for i in a]
+# @overload
+# def _div(a: ArrayLike, b: UnitBase) -> list[Quantity] | np.ndarray:
+#     if isinstance(a, np.ndarray):
+#         return np.array(a) / b
+#     else:
+#         return [i / b for i in a]
 
 @overload
 def _div(a: Quantity, b: Quantity) -> Quantity:
@@ -911,4 +1239,4 @@ def _pow(a, exponent):
 
 # %%
 
-__all__ = ['Unit', 'FixedUnit']
+__all__ = ['UnitBase', 'Unit', 'ComplexUnit', 'FixedUnit']
